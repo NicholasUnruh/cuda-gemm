@@ -11,7 +11,7 @@ Matrix multiply in CUDA, step by step from a naive kernel to tensor cores. Each 
 | 5 | [`vec`](docs/steps/5-vec.md) | 128-bit loads, transposed A tile | RTX 4060 | 7,053 | 88.1 |
 | 6 | [`wmma`](docs/steps/6-wmma.md) | Tensor cores (FP16 in, FP32 accumulate) | RTX 4060 | 20,731 | 65.3 |
 
-sm_89, CUDA 13.3, median of three runs ([raw](docs/results/rtx4060.csv)); `wmma` against FP16-input cuBLAS. Roofline pending Nsight counter access.
+sm_89, CUDA 13.3, median of three runs ([raw](docs/results/rtx4060.csv)); `wmma` against FP16-input cuBLAS. [Roofline](docs/roofline.png) from Nsight Compute counters.
 
 ```sh
 make check               # compile every kernel; no GPU needed
