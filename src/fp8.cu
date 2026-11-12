@@ -41,16 +41,31 @@ __device__ __forceinline__ void mma_e4m3(float (&d)[4], const uint32_t (&a)[4],
 #endif
 }
 
-// FP8 (E4M3) GEMM on tensor cores with per-tensor scales: C = alpha * A Bt^T
-// + beta * C, where A is M x K and Bt is N x K, both K-contiguous bytes, and
-// alpha carries the two dequantization factors. Step 7's pipeline and block
+// E8M0 scale byte e -> 2^(e - 127). e = 0 is 2^-127, a subnormal float.
+__device__ __forceinline__ float e8m0(unsigned e) {
+  return __int_as_float(e ? e << 23 : 0x00400000);
+}
+
+// FP8 (E4M3) GEMM on tensor cores: C = alpha * A Bt^T + beta * C, where A is
+// M x K and Bt is N x K, both K-contiguous bytes. Step 7's pipeline and block
 // order, with WMMA replaced by mma.sync PTX, because WMMA has no FP8
 // fragments. 8-bit ldmatrix cannot transpose, so B arrives K-major.
+//
+// kMx = false: per-tensor scales; alpha carries both dequantization factors.
+// kMx = true: MX block scales, one E8M0 byte per 32 consecutive K of each row
+// of A (sa, M x K/32) and of Bt (sb, N x K/32). One k32 MMA spans exactly one
+// block of each operand, so its partial sum is multiplied by 2^(sa + sb) in
+// FP32. Ada has no block-scaled MMA, so this costs FP32 work after every MMA.
+template <bool kMx>
 __global__ void __launch_bounds__(kThreads)
     fp8_kernel(int M, int N, int K, float alpha, const uint8_t *A,
-               const uint8_t *Bt, float beta, float *C) {
+               const uint8_t *sa, const uint8_t *Bt, const uint8_t *sb,
+               float beta, float *C) {
+  static_assert(kSteps == 2, "a row's scales for one K tile are one uint16");
   __shared__ __align__(128) uint8_t As[kStages][BM * LDS];
   __shared__ __align__(128) uint8_t Bs[kStages][BN * LDS];
+  // MX: the two scale bytes of each A row (0..BM-1) and Bt row (BM..) per tile.
+  __shared__ uint16_t Ss[kStages][kMx ? BM + BN : 1];
   const int tid = threadIdx.x, warp = tid / 32, lane = tid % 32;
   const int warpRow = warp / (BN / WN), warpCol = warp % (BN / WN);
   int blockRow, blockCol;
@@ -58,6 +73,17 @@ __global__ void __launch_bounds__(kThreads)
   A += size_t(blockRow) * BM * K;
   Bt += size_t(blockCol) * BN * K;
   C += size_t(blockRow) * BM * N + blockCol * BN;
+  // MX: thread tid fetches the scales of A row tid or Bt row tid - BM. They
+  // are read from global memory one tile ahead and stored after the MMAs, so
+  // the load latency hides behind the math.
+  const uint16_t *scale_row = nullptr;
+  if constexpr (kMx) {
+    static_assert(BM + BN == kThreads, "one scale row per thread");
+    scale_row = reinterpret_cast<const uint16_t *>(
+        tid < BM ? sa + (size_t(blockRow) * BM + tid) * (K / 32)
+                 : sb + (size_t(blockCol) * BN + tid - BM) * (K / 32));
+    Ss[0][tid] = scale_row[0];
+  }
 
   // K tile t into buffer s: 128 rows x 64 bytes per operand, 512 16-byte
   // chunks each, two per thread per operand.
@@ -70,6 +96,9 @@ __global__ void __launch_bounds__(kThreads)
     cp_async_commit();
   };
 
+  // Accumulator layout: lane (g = lane / 4, q = lane % 4) holds columns 2q,
+  // 2q + 1 of rows g and g + 8 of each 16x8 tile.
+  const int g = lane / 4, q = lane % 4;
   float acc[MI][NI][4] = {};
   const int tiles = K / BK;
   load_tile(0, 0);
@@ -78,6 +107,8 @@ __global__ void __launch_bounds__(kThreads)
     cp_async_wait<0>();
     __syncthreads();  // tile t visible; every warp is done with tile t-1
     if (t + 1 < tiles) load_tile(t + 1, (t + 1) % kStages);
+    uint16_t next_scales = 0;
+    if (kMx && t + 1 < tiles) next_scales = scale_row[t + 1];
     uint32_t a[kSteps][MI][4], b[kSteps][NI][2];
     for (int k = 0; k < kSteps; ++k) {
       // A: one x4 load per 16x32 tile. Lanes 0-15 address rows 0-15 at byte
@@ -97,21 +128,41 @@ __global__ void __launch_bounds__(kThreads)
         b[k][j + 1][0] = r[2], b[k][j + 1][1] = r[3];
       }
     }
-    // Promotion: the tensor core keeps only about 13 bits below the largest
-    // addend and truncates the rest (check/mma_probe.cu), so a long K chain
-    // inside it loses accuracy as the sum grows. Each K tile is summed in a
-    // fresh tensor-core accumulator and then added into FP32 registers.
-    for (int i = 0; i < MI; ++i)
-      for (int j = 0; j < NI; ++j) {
-        float p[4] = {};
-        for (int k = 0; k < kSteps; ++k) mma_e4m3(p, a[k][i], b[k][j]);
-        for (int e = 0; e < 4; ++e) acc[i][j][e] += p[e];
+    if constexpr (kMx) {
+      for (int k = 0; k < kSteps; ++k) {
+        float fb[NI][2];  // scales of this lane's two columns per n8 tile
+        for (int j = 0; j < NI; ++j)
+          for (int c = 0; c < 2; ++c)
+            fb[j][c] = e8m0(Ss[s][BM + warpCol * WN + j * 8 + 2 * q + c] >>
+                                8 * k & 0xff);
+        for (int i = 0; i < MI; ++i) {
+          float fa[2];  // scales of this lane's rows g and g + 8
+          for (int h = 0; h < 2; ++h)
+            fa[h] = e8m0(Ss[s][warpRow * WM + i * 16 + g + h * 8] >> 8 * k &
+                         0xff);
+          for (int j = 0; j < NI; ++j) {
+            float p[4] = {};
+            mma_e4m3(p, a[k][i], b[k][j]);
+            for (int e = 0; e < 4; ++e)
+              acc[i][j][e] = fmaf(p[e] * fa[e / 2], fb[j][e % 2], acc[i][j][e]);
+          }
+        }
       }
+      if (t + 1 < tiles) Ss[(t + 1) % kStages][tid] = next_scales;
+    } else {
+      // Promotion: the tensor core keeps only about 13 bits below the
+      // largest addend and truncates the rest (check/mma_probe.cu), so a long
+      // K chain inside it loses accuracy as the sum grows. Each K tile is
+      // summed in a fresh tensor-core accumulator, then added into FP32.
+      for (int i = 0; i < MI; ++i)
+        for (int j = 0; j < NI; ++j) {
+          float p[4] = {};
+          for (int k = 0; k < kSteps; ++k) mma_e4m3(p, a[k][i], b[k][j]);
+          for (int e = 0; e < 4; ++e) acc[i][j][e] += p[e];
+        }
+    }
   }
 
-  // Accumulator layout: lane (g = lane / 4, q = lane % 4) holds columns 2q,
-  // 2q + 1 of rows g and g + 8 of each 16x8 tile.
-  const int g = lane / 4, q = lane % 4;
   for (int i = 0; i < MI; ++i)
     for (int j = 0; j < NI; ++j)
       for (int h = 0; h < 2; ++h) {
@@ -128,6 +179,15 @@ __global__ void __launch_bounds__(kThreads)
 }
 
 void gemm_fp8(int M, int N, int K, float alpha, const uint8_t *A,
-              const uint8_t *Bt, float beta, float *C) {
-  fp8_kernel<<<(M / BM) * (N / BN), kThreads>>>(M, N, K, alpha, A, Bt, beta, C);
+              const uint8_t *sa, const uint8_t *Bt, const uint8_t *sb,
+              float beta, float *C) {
+  fp8_kernel<false><<<(M / BM) * (N / BN), kThreads>>>(M, N, K, alpha, A, sa,
+                                                       Bt, sb, beta, C);
+}
+
+void gemm_mxfp8(int M, int N, int K, float alpha, const uint8_t *A,
+                const uint8_t *sa, const uint8_t *Bt, const uint8_t *sb,
+                float beta, float *C) {
+  fp8_kernel<true><<<(M / BM) * (N / BN), kThreads>>>(M, N, K, alpha, A, sa,
+                                                      Bt, sb, beta, C);
 }

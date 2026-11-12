@@ -34,7 +34,8 @@ cublasHandle_t handle;
 struct Buffers {
   int rows, K;
   float *A, *Bt, *C;
-  void *qa, *qb;            // quantized operands (largest format: BF16)
+  void *qa, *qb;            // GEMM operands (largest format: 16-bit)
+  uint8_t *pa, *pb;         // packed FP4 codes
   uint8_t *sa, *sb;         // block scales
   unsigned *amax;           // two tensor amaxes
 };
@@ -55,49 +56,72 @@ float amax_of(const unsigned *d) {
   return f > 0.f ? f : 1.f;
 }
 
-// One format: `quantize` turns b.A and b.Bt into b.qa/b.qb (+ scales) and
-// returns the factor the GEMM output needs; `gemm` writes b.C.
+// One format: `quantize` turns b.A and b.Bt into GEMM operands (and scales);
+// `gemm` writes b.C, given the factor the output needs. Formats with a
+// per-tensor scale set tensor_max: codes are x * tensor_max / amax, so the
+// factor is (amax_a / tensor_max) * (amax_b / tensor_max).
 struct Path {
   const char *format, *impl;
   bool fp8_tensor_cores;
-  std::function<float(Buffers &)> quantize;
+  double tensor_max;
+  std::function<void(Buffers &)> quantize;
   std::function<void(Buffers &, float)> gemm;
 };
 
+uint8_t *u8(void *p) { return static_cast<uint8_t *>(p); }
+
+// cuBLAS GemmEx in the TN layout of sgemm_tn, 16-bit inputs, FP32 accumulate.
+void gemm16_tn(const Buffers &b, float alpha, cudaDataType type) {
+  float zero = 0.f;
+  CUBLAS_CHECK(cublasGemmEx(handle, CUBLAS_OP_T, CUBLAS_OP_N, b.rows, b.rows,
+                            b.K, &alpha, b.qb, type, b.K, b.qa, type, b.K,
+                            &zero, b.C, CUDA_R_32F, b.rows, CUBLAS_COMPUTE_32F,
+                            CUBLAS_GEMM_DEFAULT));
+}
+
 std::vector<Path> paths() {
-  auto none = [](Buffers &) { return 1.f; };
-  auto bf16 = [](Buffers &b) {
-    size_t n = size_t(b.rows) * b.K;
-    quant_bf16(b.A, n, static_cast<__nv_bfloat16 *>(b.qa));
-    quant_bf16(b.Bt, n, static_cast<__nv_bfloat16 *>(b.qb));
-    return 1.f;
+  auto n_of = [](const Buffers &b) { return size_t(b.rows) * b.K; };
+  auto e4m3 = [=](Buffers &b) {
+    quant_amax(b.A, n_of(b), b.amax);
+    quant_amax(b.Bt, n_of(b), b.amax + 1);
+    quant_e4m3_tensor(b.A, n_of(b), b.amax, u8(b.qa));
+    quant_e4m3_tensor(b.Bt, n_of(b), b.amax + 1, u8(b.qb));
   };
-  auto e4m3 = [](Buffers &b) {
-    size_t n = size_t(b.rows) * b.K;
-    quant_amax(b.A, n, b.amax);
-    quant_amax(b.Bt, n, b.amax + 1);
-    quant_e4m3_tensor(b.A, n, b.amax, static_cast<uint8_t *>(b.qa));
-    quant_e4m3_tensor(b.Bt, n, b.amax + 1, static_cast<uint8_t *>(b.qb));
-    return -1.f;  // the factor needs the amaxes: read after the timing
+  auto mxfp8 = [=](Buffers &b) {
+    quant_mx(b.A, n_of(b), false, u8(b.qa), b.sa);
+    quant_mx(b.Bt, n_of(b), false, u8(b.qb), b.sb);
+  };
+  auto mxfp4 = [=](Buffers &b) {
+    quant_mx(b.A, n_of(b), true, b.pa, b.sa);
+    quant_mx(b.Bt, n_of(b), true, b.pb, b.sb);
+    e2m1_to_e4m3(b.pa, n_of(b), u8(b.qa));
+    e2m1_to_e4m3(b.pb, n_of(b), u8(b.qb));
+  };
+  auto nvfp4 = [=](Buffers &b) {
+    quant_amax(b.A, n_of(b), b.amax);
+    quant_amax(b.Bt, n_of(b), b.amax + 1);
+    quant_nvfp4(b.A, n_of(b), b.amax, b.pa, b.sa);
+    quant_nvfp4(b.Bt, n_of(b), b.amax + 1, b.pb, b.sb);
+    nvfp4_to_half(b.pa, b.sa, n_of(b), static_cast<__half *>(b.qa));
+    nvfp4_to_half(b.pb, b.sb, n_of(b), static_cast<__half *>(b.qb));
+  };
+  auto mine = [](GemmFp8Fn fn, bool mx) {
+    return [=](Buffers &b, float alpha) {
+      fn(b.rows, b.rows, b.K, alpha, u8(b.qa), mx ? b.sa : nullptr, u8(b.qb),
+         mx ? b.sb : nullptr, 0.f, b.C);
+    };
   };
   return {
-      {"fp32", "cuBLAS", false, none,
+      {"fp32", "cuBLAS", false, 0, [](Buffers &) {},
        [](Buffers &b, float) { sgemm_tn(b.rows, b.rows, b.K, b.A, b.Bt, b.C); }},
-      {"bf16", "cuBLAS", false, bf16,
-       [](Buffers &b, float) {
-         float one = 1.f, zero = 0.f;
-         CUBLAS_CHECK(cublasGemmEx(handle, CUBLAS_OP_T, CUBLAS_OP_N, b.rows,
-                                   b.rows, b.K, &one, b.qb, CUDA_R_16BF, b.K,
-                                   b.qa, CUDA_R_16BF, b.K, &zero, b.C,
-                                   CUDA_R_32F, b.rows, CUBLAS_COMPUTE_32F,
-                                   CUBLAS_GEMM_DEFAULT));
-       }},
-      {"e4m3_tensor", "fp8 (step 8)", true, e4m3,
-       [](Buffers &b, float alpha) {
-         gemm_fp8(b.rows, b.rows, b.K, alpha, static_cast<uint8_t *>(b.qa),
-                  static_cast<uint8_t *>(b.qb), 0.f, b.C);
-       }},
-      {"e4m3_tensor", "cuBLASLt", true, e4m3,
+      {"bf16", "cuBLAS", false, 0,
+       [=](Buffers &b) {
+         quant_bf16(b.A, n_of(b), static_cast<__nv_bfloat16 *>(b.qa));
+         quant_bf16(b.Bt, n_of(b), static_cast<__nv_bfloat16 *>(b.qb));
+       },
+       [](Buffers &b, float alpha) { gemm16_tn(b, alpha, CUDA_R_16BF); }},
+      {"e4m3_tensor", "fp8 (step 8)", true, 448, e4m3, mine(gemm_fp8, false)},
+      {"e4m3_tensor", "cuBLASLt", true, 448, e4m3,
        [](Buffers &b, float alpha) {
          static LtFp8 *lt = nullptr;
          static int lt_rows = 0, lt_k = 0;
@@ -106,17 +130,21 @@ std::vector<Path> paths() {
            lt = new LtFp8(b.rows, b.rows, b.K);
            lt_rows = b.rows, lt_k = b.K;
          }
-         lt->run(alpha, static_cast<uint8_t *>(b.qa),
-                 static_cast<uint8_t *>(b.qb), 0.f, b.C);
+         lt->run(alpha, u8(b.qa), u8(b.qb), 0.f, b.C);
        }},
+      {"mxfp8", "mxfp8 (step 9)", true, 0, mxfp8, mine(gemm_mxfp8, true)},
+      {"mxfp4", "mxfp8 kernel, E2M1 values", true, 0, mxfp4,
+       mine(gemm_mxfp8, true)},
+      {"nvfp4", "FP16 cuBLAS on decoded values", false, 6.0 * 448.0, nvfp4,
+       [](Buffers &b, float alpha) { gemm16_tn(b, alpha, CUDA_R_16F); }},
   };
 }
 
-// The factor C needs after the GEMM, once the quantizer has run.
-float output_factor(Buffers &b, float q) {
-  if (q >= 0.f) return q;
-  // E4M3 per tensor: codes are x * 448 / amax.
-  return float(double(amax_of(b.amax)) / 448.0 * amax_of(b.amax + 1) / 448.0);
+// The factor C needs, once the quantizer has run.
+float output_factor(const Path &p, Buffers &b) {
+  if (p.tensor_max == 0) return 1.f;
+  return float(double(amax_of(b.amax)) / p.tensor_max * amax_of(b.amax + 1) /
+               p.tensor_max);
 }
 
 Buffers alloc(int rows, int K) {
@@ -127,6 +155,8 @@ Buffers alloc(int rows, int K) {
   CUDA_CHECK(cudaMalloc(&b.C, size_t(rows) * rows * 4));
   CUDA_CHECK(cudaMalloc(&b.qa, n * 2));
   CUDA_CHECK(cudaMalloc(&b.qb, n * 2));
+  CUDA_CHECK(cudaMalloc(&b.pa, n / 2));
+  CUDA_CHECK(cudaMalloc(&b.pb, n / 2));
   CUDA_CHECK(cudaMalloc(&b.sa, n / 16));
   CUDA_CHECK(cudaMalloc(&b.sb, n / 16));
   CUDA_CHECK(cudaMalloc(&b.amax, 8));
@@ -135,7 +165,8 @@ Buffers alloc(int rows, int K) {
 
 void release(Buffers &b) {
   for (void *p : {(void *)b.A, (void *)b.Bt, (void *)b.C, b.qa, b.qb,
-                  (void *)b.sa, (void *)b.sb, (void *)b.amax})
+                  (void *)b.pa, (void *)b.pb, (void *)b.sa, (void *)b.sb,
+                  (void *)b.amax})
     CUDA_CHECK(cudaFree(p));
 }
 
@@ -181,8 +212,8 @@ void accuracy(bool fp8_ok) {
       std::vector<float> c(size_t(rows) * rows);
       for (const Path &p : paths()) {
         if (p.fp8_tensor_cores && !fp8_ok) continue;
-        float q = p.quantize(b);
-        p.gemm(b, output_factor(b, q));
+        p.quantize(b);
+        p.gemm(b, output_factor(p, b));
         CUDA_CHECK(cudaMemcpy(c.data(), b.C, c.size() * 4,
                               cudaMemcpyDeviceToHost));
         std::vector<double> err(samples);
@@ -210,7 +241,8 @@ void cost(bool fp8_ok) {
   for (const Path &p : paths()) {
     if (p.fp8_tensor_cores && !fp8_ok) continue;
     float qms = time_ms([&] { p.quantize(b); });
-    float alpha = output_factor(b, p.quantize(b));
+    p.quantize(b);
+    float alpha = output_factor(p, b);
     float gms = time_ms([&] { p.gemm(b, alpha); });
     printf("%s,%s,%.4f,%.4f,%.2f,%.1f\n", p.format, p.impl, qms, gms,
            2.0 * n * n * n / (gms * 1e9), 100.0 * qms / gms);

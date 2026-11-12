@@ -118,6 +118,51 @@ void quant_bf16(const float *x, size_t n, __nv_bfloat16 *out) {
                                         reinterpret_cast<__nv_bfloat162 *>(out));
 }
 
+// Each E2M1 value is also an E4M3 value, so this re-encoding is exact.
+__global__ void e2m1_to_e4m3_kernel(const uint16_t *packed, size_t n4,
+                                    uchar4 *codes) {
+  for (size_t i = blockIdx.x * size_t(blockDim.x) + threadIdx.x; i < n4;
+       i += size_t(gridDim.x) * blockDim.x) {
+    unsigned p = packed[i];
+    auto c = [&](int k) {
+      __half h = __nv_cvt_fp4_to_halfraw(p >> 4 * k & 0xf, __NV_E2M1);
+      return e4m3(__half2float(h));
+    };
+    codes[i] = make_uchar4(c(0), c(1), c(2), c(3));
+  }
+}
+
+// An E2M1 element times its E4M3 block scale has at most 6 significant bits
+// and lies within 2^-10 .. 2688, so the FP16 product is exact.
+__global__ void nvfp4_to_half_kernel(const uint16_t *packed,
+                                     const uint8_t *scales, size_t n4,
+                                     __half2 *out) {
+  for (size_t i = blockIdx.x * size_t(blockDim.x) + threadIdx.x; i < n4;
+       i += size_t(gridDim.x) * blockDim.x) {
+    unsigned p = packed[i];
+    float s = __half2float(__nv_cvt_fp8_to_halfraw(scales[i / 4], __NV_E4M3));
+    auto v = [&](int k) {
+      return s * __half2float(__nv_cvt_fp4_to_halfraw(p >> 4 * k & 0xf,
+                                                      __NV_E2M1));
+    };
+    out[2 * i] = __floats2half2_rn(v(0), v(1));
+    out[2 * i + 1] = __floats2half2_rn(v(2), v(3));
+  }
+}
+
+void e2m1_to_e4m3(const uint8_t *packed, size_t n, uint8_t *codes) {
+  e2m1_to_e4m3_kernel<<<grid_for(n / 4), 256>>>(
+      reinterpret_cast<const uint16_t *>(packed), n / 4,
+      reinterpret_cast<uchar4 *>(codes));
+}
+
+void nvfp4_to_half(const uint8_t *codes, const uint8_t *scales, size_t n,
+                   __half *out) {
+  nvfp4_to_half_kernel<<<grid_for(n / 4), 256>>>(
+      reinterpret_cast<const uint16_t *>(codes), scales, n / 4,
+      reinterpret_cast<__half2 *>(out));
+}
+
 void quant_amax(const float *x, size_t n, unsigned *amax) {
   cudaMemsetAsync(amax, 0, sizeof(unsigned));
   amax_kernel<<<grid_for(n / 4), 256>>>(reinterpret_cast<const float4 *>(x),

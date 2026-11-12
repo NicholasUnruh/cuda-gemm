@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include <cuda_bf16.h>
+#include <cuda_fp16.h>
 
 // FP32 -> narrow-format quantizers on the GPU. Every one rounds to nearest
 // even and saturates, and matches the C++ reference models of the chip-lab
@@ -34,3 +35,12 @@ void quant_mx(const float *x, size_t n, bool fp4, uint8_t *codes,
 // reference does. Dequantize as code * s / S.
 void quant_nvfp4(const float *x, size_t n, const unsigned *amax,
                  uint8_t *codes, uint8_t *scales);
+
+// Decoders for emulating FP4 formats on Ada, which has no FP4 tensor cores.
+// MXFP4 codes (packed E2M1) -> the same values as E4M3 bytes, for the MXFP8
+// kernel with the MXFP4 scales.
+void e2m1_to_e4m3(const uint8_t *packed, size_t n, uint8_t *codes);
+// NVFP4 codes and scales -> FP16 values code * s (exact); the GEMM output
+// then needs the factor (amax_a / 2688) * (amax_b / 2688).
+void nvfp4_to_half(const uint8_t *codes, const uint8_t *scales, size_t n,
+                   __half *out);

@@ -15,12 +15,20 @@
 #include "quant.cuh"
 #include "util.cuh"
 
+// How bench quantizes the FP32 inputs for an fp8_fn kernel.
+enum class Fp8Data {
+  kTensor,  // E4M3, one scale per tensor (alpha)
+  kMxfp8,   // E4M3 elements, E8M0 scale per 32
+  kMxfp4,   // E2M1 elements re-encoded as E4M3, E8M0 scale per 32
+};
+
 // Exactly one of fn (FP32 inputs), half_fn (FP16) and fp8_fn (E4M3) is set.
 struct Kernel {
   const char *name;
   GemmFn fn;
   GemmHalfFn half_fn;
   GemmFp8Fn fp8_fn;
+  Fp8Data data;
 };
 
 // Add each new kernel here.
@@ -33,7 +41,9 @@ static const Kernel kKernels[] = {
     {"vec", gemm_vec, nullptr},
     {"wmma", nullptr, gemm_wmma},
     {"cpasync", nullptr, gemm_cpasync},
-    {"fp8", nullptr, nullptr, gemm_fp8},
+    {"fp8", nullptr, nullptr, gemm_fp8, Fp8Data::kTensor},
+    {"mxfp8", nullptr, nullptr, gemm_mxfp8, Fp8Data::kMxfp8},
+    {"mxfp4", nullptr, nullptr, gemm_mxfp8, Fp8Data::kMxfp4},
 };
 // clang-format on
 
@@ -66,15 +76,21 @@ static void gemm_cublas_half(int M, int N, int K, float alpha, const __half *A,
 }
 
 // Error of C against exact dot products of the quantized inputs, on 4,096
-// sampled entries: max |C - exact| / max |exact|. A and Bt are E4M3 codes.
-static double exact_err(int n, float alpha, const uint8_t *A, const uint8_t *Bt,
-                        const float *C) {
+// sampled entries: max |C - exact| / max |exact|. A and Bt are E4M3 codes;
+// sa and sb are their MX block scales, or null for per-tensor scaling.
+static double exact_err(int n, float alpha, const uint8_t *A, const uint8_t *sa,
+                        const uint8_t *Bt, const uint8_t *sb, const float *C) {
   size_t count = size_t(n) * n;
-  std::vector<uint8_t> a(count), b(count);
+  std::vector<uint8_t> a(count), b(count), as(count / 32, 127),
+      bs(count / 32, 127);  // 127 is 2^0
   std::vector<float> c(count);
   CUDA_CHECK(cudaMemcpy(a.data(), A, count, cudaMemcpyDeviceToHost));
   CUDA_CHECK(cudaMemcpy(b.data(), Bt, count, cudaMemcpyDeviceToHost));
   CUDA_CHECK(cudaMemcpy(c.data(), C, count * 4, cudaMemcpyDeviceToHost));
+  if (sa) {
+    CUDA_CHECK(cudaMemcpy(as.data(), sa, count / 32, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(bs.data(), sb, count / 32, cudaMemcpyDeviceToHost));
+  }
   double lut[256];
   for (int v = 0; v < 256; ++v)
     lut[v] = __half2float(__nv_cvt_fp8_to_halfraw(uint8_t(v), __NV_E4M3));
@@ -83,8 +99,11 @@ static double exact_err(int n, float alpha, const uint8_t *A, const uint8_t *Bt,
   for (int s = 0; s < 4096; ++s) {
     int i = rng() % n, j = rng() % n;
     double exact = 0;
-    for (int k = 0; k < n; ++k)
-      exact += lut[a[size_t(i) * n + k]] * lut[b[size_t(j) * n + k]];
+    for (int k = 0; k < n; ++k) {
+      size_t ia = size_t(i) * n + k, ib = size_t(j) * n + k;
+      exact += std::ldexp(lut[a[ia]] * lut[b[ib]],
+                          as[ia / 32] + bs[ib / 32] - 254);
+    }
     exact *= alpha;
     max_err = fmax(max_err, fabs(c[size_t(i) * n + j] - exact));
     max_ref = fmax(max_ref, fabs(exact));
@@ -153,32 +172,53 @@ int main(int argc, char **argv) {
       ms = time_ms([&] { kernel->fn(n, n, n, 1.f, A, B, 0.f, C); });
       ref_ms = time_ms([&] { gemm_cublas(n, n, n, 1.f, A, B, 0.f, Ref); });
     } else if (kernel->fp8_fn) {
-      // E4M3 codes with per-tensor scales, quantized once outside the timed
-      // loop. B's random values are used as Bt (N x K): FP8 needs B K-major.
-      uint8_t *Aq, *Bq;
+      // E4M3 codes (and MX scales), quantized once outside the timed loop.
+      // B's random values are used as Bt (N x K): FP8 needs B K-major.
+      // The reference is per-tensor cuBLASLt FP8 on the same codes: cuBLASLt
+      // has no MX block scaling on Ada, so for MX it is a timing reference.
+      uint8_t *Aq, *Bq, *sa = nullptr, *sb = nullptr, *packed;
       unsigned *amax;
       CUDA_CHECK(cudaMalloc(&Aq, count));
       CUDA_CHECK(cudaMalloc(&Bq, count));
+      CUDA_CHECK(cudaMalloc(&packed, count / 2));
       CUDA_CHECK(cudaMalloc(&amax, 2 * sizeof(unsigned)));
-      quant_amax(A, count, amax);
-      quant_amax(B, count, amax + 1);
-      quant_e4m3_tensor(A, count, amax, Aq);
-      quant_e4m3_tensor(B, count, amax + 1, Bq);
-      unsigned bits[2];
-      CUDA_CHECK(cudaMemcpy(bits, amax, sizeof(bits), cudaMemcpyDeviceToHost));
-      float am[2];
-      memcpy(am, bits, sizeof(am));
-      // Each code is x * 448 / amax, so the product carries (448 / amax)^2.
-      const float alpha = float(double(am[0]) / 448.0 * am[1] / 448.0);
+      float alpha = 1.f;
+      if (kernel->data == Fp8Data::kTensor) {
+        quant_amax(A, count, amax);
+        quant_amax(B, count, amax + 1);
+        quant_e4m3_tensor(A, count, amax, Aq);
+        quant_e4m3_tensor(B, count, amax + 1, Bq);
+        unsigned bits[2];
+        CUDA_CHECK(
+            cudaMemcpy(bits, amax, sizeof(bits), cudaMemcpyDeviceToHost));
+        float am[2];
+        memcpy(am, bits, sizeof(am));
+        // Each code is x * 448 / amax, so the product carries (448 / amax)^2.
+        alpha = float(double(am[0]) / 448.0 * am[1] / 448.0);
+      } else {
+        CUDA_CHECK(cudaMalloc(&sa, count / 32));
+        CUDA_CHECK(cudaMalloc(&sb, count / 32));
+        if (kernel->data == Fp8Data::kMxfp8) {
+          quant_mx(A, count, false, Aq, sa);
+          quant_mx(B, count, false, Bq, sb);
+        } else {
+          quant_mx(A, count, true, packed, sa);
+          e2m1_to_e4m3(packed, count, Aq);
+          quant_mx(B, count, true, packed, sb);
+          e2m1_to_e4m3(packed, count, Bq);
+        }
+      }
       LtFp8 lt(n, n, n);
-      ms = time_ms([&] { kernel->fp8_fn(n, n, n, alpha, Aq, Bq, 0.f, C); });
+      ms = time_ms(
+          [&] { kernel->fp8_fn(n, n, n, alpha, Aq, sa, Bq, sb, 0.f, C); });
       ref_ms = time_ms([&] { lt.run(alpha, Aq, Bq, 0.f, Ref); });
-      exact = exact_err(n, alpha, Aq, Bq, C);
-      printf("# cublaslt,%d,max_rel_err vs exact %.2e\n", n,
-             exact_err(n, alpha, Aq, Bq, Ref));
-      CUDA_CHECK(cudaFree(Aq));
-      CUDA_CHECK(cudaFree(Bq));
-      CUDA_CHECK(cudaFree(amax));
+      exact = exact_err(n, alpha, Aq, sa, Bq, sb, C);
+      if (!sa)
+        printf("# cublaslt,%d,max_rel_err vs exact %.2e\n", n,
+               exact_err(n, alpha, Aq, sa, Bq, sb, Ref));
+      for (void *p : {(void *)Aq, (void *)Bq, (void *)packed, (void *)sa,
+                      (void *)sb, (void *)amax})
+        CUDA_CHECK(cudaFree(p));
     } else {
       // FP16 copies of A and B, converted once outside the timed loop.
       std::vector<__half> hAh(count), hBh(count);

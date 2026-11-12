@@ -13,9 +13,11 @@ using GemmFn = void (*)(int M, int N, int K, float alpha, const float *A,
 using GemmHalfFn = void (*)(int M, int N, int K, float alpha, const __half *A,
                             const __half *B, float beta, float *C);
 // FP8 (E4M3 bytes) inputs, FP32 accumulation and output. B is passed
-// transposed, as Bt (N x K), so both operands are K-contiguous.
+// transposed, as Bt (N x K), so both operands are K-contiguous. sa and sb are
+// MX block scales (E8M0, one per 32 K of each row), unused by per-tensor fp8.
 using GemmFp8Fn = void (*)(int M, int N, int K, float alpha, const uint8_t *A,
-                           const uint8_t *Bt, float beta, float *C);
+                           const uint8_t *sa, const uint8_t *Bt,
+                           const uint8_t *sb, float beta, float *C);
 
 void gemm_naive(int M, int N, int K, float alpha, const float *A,
                 const float *B, float beta, float *C);
@@ -32,4 +34,8 @@ void gemm_wmma(int M, int N, int K, float alpha, const __half *A,
 void gemm_cpasync(int M, int N, int K, float alpha, const __half *A,
                   const __half *B, float beta, float *C);
 void gemm_fp8(int M, int N, int K, float alpha, const uint8_t *A,
-              const uint8_t *Bt, float beta, float *C);
+              const uint8_t *sa, const uint8_t *Bt, const uint8_t *sb,
+              float beta, float *C);
+void gemm_mxfp8(int M, int N, int K, float alpha, const uint8_t *A,
+                const uint8_t *sa, const uint8_t *Bt, const uint8_t *sb,
+                float beta, float *C);
