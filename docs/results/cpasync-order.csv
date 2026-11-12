@@ -1,0 +1,6 @@
+# NVIDIA GeForce RTX 4060 (sm_89), driver 610.88, CUDA 13.3, WSL2; GPU idle; 2026-11-12 04:06 UTC
+# cpasync at 4096 with kGroup = 1 (row-major block order) against kGroup = 8 (the committed kernel), same session.
+# Bench rows: median of three. Counters: one Nsight Compute launch each.
+kernel_group,ms,gflops,cublas_gflops,pct_cublas,dram_read_bytes,l2_hit_pct,ncu_ms,tensor_pipe_pct,stall_long_scoreboard,stall_barrier
+1,4.9649,27682.3,30066.0,92.1,1078391424,67.92,4.960,45.47,2.37,3.97
+8,4.7685,28822.5,30249.7,95.3,242438400,92.76,4.764,47.30,0.92,4.10
