@@ -26,23 +26,31 @@
     }                                                                         \
   } while (0)
 
+// Exactly one of fn (FP32 inputs) and half_fn (FP16 inputs) is set.
 struct Kernel {
   const char *name;
   GemmFn fn;
+  GemmHalfFn half_fn;
 };
 
 // Add each new kernel here.
 static const Kernel kKernels[] = {
-    {"naive", gemm_naive},
-    {"coalesced", gemm_coalesced},
-    {"smem", gemm_smem},
-    {"reg2d", gemm_reg2d},
-    {"vec", gemm_vec},
+    {"naive", gemm_naive, nullptr},
+    {"coalesced", gemm_coalesced, nullptr},
+    {"smem", gemm_smem, nullptr},
+    {"reg2d", gemm_reg2d, nullptr},
+    {"vec", gemm_vec, nullptr},
+    {"wmma", nullptr, gemm_wmma},
 };
 
 static const int kWarmup = 2;
 static const int kReps = 10;
-static const float kTolerance = 1e-4f;  // max |C - ref| / max |ref|, FP32 kernels
+// max |C - ref| / max |ref|. FP32 kernels are checked against cublasSgemm.
+// FP16-input kernels are checked against cublasGemmEx on the same FP16
+// inputs with FP32 accumulation: summation order and the tensor cores'
+// internal rounding differ, so they get a 10x looser bound.
+static const float kTolerance = 1e-4f;
+static const float kHalfTolerance = 1e-3f;
 
 static cublasHandle_t g_handle;
 
@@ -53,15 +61,25 @@ static void gemm_cublas(int M, int N, int K, float alpha, const float *A,
                            B, N, A, K, &beta, C, N));
 }
 
-// Mean milliseconds per call over kReps, after kWarmup calls.
-static float time_ms(GemmFn fn, int n, const float *A, const float *B, float *C) {
-  for (int i = 0; i < kWarmup; ++i) fn(n, n, n, 1.f, A, B, 0.f, C);
+// FP16 A and B, FP32 accumulation and C: the reference for tensor-core kernels.
+static void gemm_cublas_half(int M, int N, int K, float alpha, const __half *A,
+                             const __half *B, float beta, float *C) {
+  CUBLAS_CHECK(cublasGemmEx(g_handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha,
+                            B, CUDA_R_16F, N, A, CUDA_R_16F, K, &beta, C,
+                            CUDA_R_32F, N, CUBLAS_COMPUTE_32F,
+                            CUBLAS_GEMM_DEFAULT));
+}
+
+// Mean milliseconds per call of run() over kReps, after kWarmup calls.
+template <class Run>
+static float time_ms(Run run) {
+  for (int i = 0; i < kWarmup; ++i) run();
   CUDA_CHECK(cudaGetLastError());
   cudaEvent_t start, stop;
   CUDA_CHECK(cudaEventCreate(&start));
   CUDA_CHECK(cudaEventCreate(&stop));
   CUDA_CHECK(cudaEventRecord(start));
-  for (int i = 0; i < kReps; ++i) fn(n, n, n, 1.f, A, B, 0.f, C);
+  for (int i = 0; i < kReps; ++i) run();
   CUDA_CHECK(cudaEventRecord(stop));
   CUDA_CHECK(cudaEventSynchronize(stop));
   float ms = 0.f;
@@ -76,10 +94,10 @@ int main(int argc, char **argv) {
     fprintf(stderr, "usage: %s <kernel> [size ...]\n", argv[0]);
     return 2;
   }
-  GemmFn fn = nullptr;
+  const Kernel *kernel = nullptr;
   for (const Kernel &k : kKernels)
-    if (strcmp(k.name, argv[1]) == 0) fn = k.fn;
-  if (!fn) {
+    if (strcmp(k.name, argv[1]) == 0) kernel = &k;
+  if (!kernel) {
     fprintf(stderr, "unknown kernel %s\n", argv[1]);
     return 2;
   }
@@ -92,6 +110,7 @@ int main(int argc, char **argv) {
     }
   }
   if (sizes.empty()) sizes = {256, 512, 1024, 2048, 4096};
+  const float tolerance = kernel->half_fn ? kHalfTolerance : kTolerance;
 
   CUBLAS_CHECK(cublasCreate(&g_handle));
   cudaDeviceProp prop;
@@ -117,8 +136,27 @@ int main(int argc, char **argv) {
     CUDA_CHECK(cudaMemcpy(A, hA.data(), bytes, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(B, hB.data(), bytes, cudaMemcpyHostToDevice));
 
-    float ms = time_ms(fn, n, A, B, C);
-    float ref_ms = time_ms(gemm_cublas, n, A, B, Ref);
+    float ms, ref_ms;
+    if (kernel->fn) {
+      ms = time_ms([&] { kernel->fn(n, n, n, 1.f, A, B, 0.f, C); });
+      ref_ms = time_ms([&] { gemm_cublas(n, n, n, 1.f, A, B, 0.f, Ref); });
+    } else {
+      // FP16 copies of A and B, converted once outside the timed loop.
+      std::vector<__half> hAh(count), hBh(count);
+      for (size_t i = 0; i < count; ++i) hAh[i] = __float2half(hA[i]);
+      for (size_t i = 0; i < count; ++i) hBh[i] = __float2half(hB[i]);
+      __half *Ah, *Bh;
+      CUDA_CHECK(cudaMalloc(&Ah, count * sizeof(__half)));
+      CUDA_CHECK(cudaMalloc(&Bh, count * sizeof(__half)));
+      CUDA_CHECK(cudaMemcpy(Ah, hAh.data(), count * sizeof(__half),
+                            cudaMemcpyHostToDevice));
+      CUDA_CHECK(cudaMemcpy(Bh, hBh.data(), count * sizeof(__half),
+                            cudaMemcpyHostToDevice));
+      ms = time_ms([&] { kernel->half_fn(n, n, n, 1.f, Ah, Bh, 0.f, C); });
+      ref_ms = time_ms([&] { gemm_cublas_half(n, n, n, 1.f, Ah, Bh, 0.f, Ref); });
+      CUDA_CHECK(cudaFree(Ah));
+      CUDA_CHECK(cudaFree(Bh));
+    }
     CUDA_CHECK(cudaMemcpy(hC.data(), C, bytes, cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(hRef.data(), Ref, bytes, cudaMemcpyDeviceToHost));
 
@@ -132,7 +170,7 @@ int main(int argc, char **argv) {
     double gflops = flops / (ms * 1e6), ref_gflops = flops / (ref_ms * 1e6);
     printf("%s,%d,%.4f,%.1f,%.1f,%.1f,%.2e\n", argv[1], n, ms, gflops,
            ref_gflops, 100.0 * gflops / ref_gflops, rel);
-    if (!(rel <= kTolerance)) ok = false;
+    if (!(rel <= tolerance)) ok = false;
 
     CUDA_CHECK(cudaFree(A));
     CUDA_CHECK(cudaFree(B));
@@ -140,6 +178,6 @@ int main(int argc, char **argv) {
     CUDA_CHECK(cudaFree(Ref));
   }
   CUBLAS_CHECK(cublasDestroy(g_handle));
-  if (!ok) fprintf(stderr, "FAIL: error above %.0e\n", kTolerance);
+  if (!ok) fprintf(stderr, "FAIL: error above %.0e\n", tolerance);
   return ok ? 0 : 1;
 }
