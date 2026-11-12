@@ -1,6 +1,22 @@
 [
-  {"format": "BF16", "metric": "gemm_tflops", "value": 28.20, "unit": "TFLOP/s (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
-  {"format": "BF16", "metric": "quantize_ms", "value": 0.8018, "unit": "ms, both 4096x4096 operands (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
-  {"format": "BF16", "metric": "gemm_err_median", "value": 3.62e-5, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
-  {"format": "BF16", "metric": "gemm_err_p99", "value": 1.40e-4, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"}
+  {"format": "BF16", "metric": "gemm_tflops", "value": 24.11, "unit": "TFLOP/s, 4096^3, one run (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "BF16", "metric": "quantize_ms", "value": 0.8019, "unit": "ms, both 4096x4096 operands (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "BF16", "metric": "gemm_err_median", "value": 3.62e-05, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "BF16", "metric": "gemm_err_p99", "value": 0.00014, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "FP8", "metric": "gemm_tflops", "value": 57.78, "unit": "TFLOP/s, 4096^3, median of three (RTX 4060)", "source": "docs/results/rtx4060.csv"},
+  {"format": "FP8", "metric": "quantize_ms", "value": 1.2994, "unit": "ms, both 4096x4096 operands (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "FP8", "metric": "gemm_err_median", "value": 0.000622, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "FP8", "metric": "gemm_err_p99", "value": 0.00232, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "MXFP8", "metric": "gemm_tflops", "value": 37.86, "unit": "TFLOP/s, 4096^3, median of three (RTX 4060)", "source": "docs/results/rtx4060.csv"},
+  {"format": "MXFP8", "metric": "quantize_ms", "value": 0.674, "unit": "ms, both 4096x4096 operands (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "MXFP8", "metric": "gemm_err_median", "value": 0.000694, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "MXFP8", "metric": "gemm_err_p99", "value": 0.00262, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "MXFP4", "metric": "gemm_tflops", "value": 39.06, "unit": "TFLOP/s, 4096^3, median of three (RTX 4060)", "source": "docs/results/rtx4060.csv"},
+  {"format": "MXFP4", "metric": "quantize_ms", "value": 0.8852, "unit": "ms, both 4096x4096 operands (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "MXFP4", "metric": "gemm_err_median", "value": 0.0026, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "MXFP4", "metric": "gemm_err_p99", "value": 0.0105, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "NVFP4", "metric": "gemm_tflops", "value": 32.21, "unit": "TFLOP/s, 4096^3, one run (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "NVFP4", "metric": "quantize_ms", "value": 4.9459, "unit": "ms, both 4096x4096 operands (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "NVFP4", "metric": "gemm_err_median", "value": 0.00226, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "NVFP4", "metric": "gemm_err_p99", "value": 0.00814, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"}
 ]

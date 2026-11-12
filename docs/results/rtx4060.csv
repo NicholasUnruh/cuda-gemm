@@ -67,3 +67,20 @@ fp8,4096,2.5062,54838.7,59543.8,92.1,8.03e-05
 fp8,4096,2.3782,57790.2,61311.8,94.3,9.07e-05
 # cublaslt,4096,max_rel_err vs exact 1.25e-04
 fp8,4096,2.3788,57777.8,61905.7,93.3,8.16e-05
+# mxfp8, mxfp4: same GPU, driver and CUDA; GPU idle before the run; 2026-11-12 08:31 UTC. All sizes, then two more runs at 4096.
+# cublas_gflops is per-tensor cuBLASLt FP8 on the same codes (cuBLASLt has no MX scaling on Ada); max_rel_err is against
+# exact FP64 dot products of the codes with their block scales. mxfp4 runs mxfp8_kernel on E2M1 values re-encoded as E4M3.
+mxfp8,256,0.0108,3120.8,389.7,800.7,7.28e-05
+mxfp8,512,0.0193,13943.8,13443.3,103.7,6.02e-05
+mxfp8,1024,0.0788,27235.7,49106.4,55.5,5.40e-05
+mxfp8,2048,0.4805,35757.1,55886.8,64.0,5.28e-05
+mxfp8,4096,3.7097,37048.1,59328.0,62.4,4.44e-05
+mxfp8,4096,3.6306,37855.8,57755.4,65.5,4.76e-05
+mxfp8,4096,3.5927,38255.2,55510.0,68.9,4.79e-05
+mxfp4,256,0.0109,3091.3,391.5,789.7,0.00e+00
+mxfp4,512,0.0210,12793.4,3249.6,393.7,0.00e+00
+mxfp4,1024,0.0741,28966.2,27437.3,105.6,0.00e+00
+mxfp4,2048,0.4500,38173.4,59850.5,63.8,0.00e+00
+mxfp4,4096,3.6291,37871.8,58092.8,65.2,0.00e+00
+mxfp4,4096,3.5131,39121.6,63601.2,61.5,0.00e+00
+mxfp4,4096,3.5187,39059.9,63764.4,61.3,0.00e+00
