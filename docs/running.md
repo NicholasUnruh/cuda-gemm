@@ -33,12 +33,16 @@ ncu --set full -o build/naive ./build/bench naive 4096
 
 The memory-throughput and occupancy sections of the report explain most of the gap to cuBLAS at each step.
 
-`make profile` collects the roofline counters for every kernel at 4096³ as CSV, and `scripts/roofline.py` plots them:
+`make profile` collects the roofline counters for every kernel at 4096³ as CSV, and the scripts plot them (`counters.py` titles its figure RTX 4060):
 
 ```sh
 mkdir -p build && make profile ARCH=sm_89 > build/ncu.csv
 uv run scripts/roofline.py build/ncu.csv docs/roofline.png "RTX 4060"
+uv run scripts/counters.py build/ncu.csv docs/img/counters.png
+uv run scripts/tiling.py docs/img/tiling.png   # reads docs/results/*.csv
 ```
+
+Each plotting script takes an optional `dark` theme and writes `.webp` when the output ends in it; `counters.py` and `tiling.py` also take a JSON output path. `tiling.py` fails if a cited source line changed, and prints the global load requests and sectors its tiling implies next to the measured ones.
 
 The RTX 4060 counters are in [results/ncu-rtx4060.csv](results/ncu-rtx4060.csv). On Windows and WSL2 the driver refuses counter access (`ERR_NVGPUCTRPERM`) until NVIDIA Control Panel → Developer → Manage GPU Performance Counters allows all users.
 

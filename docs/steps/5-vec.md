@@ -25,3 +25,5 @@ Nothing overlaps the next tile's global load with this tile's math (double buffe
 ## Profile
 
 Nsight Compute, one profiled launch at 4096³: 58.26 FLOP per DRAM byte and 8352.6 GFLOP/s ([roofline](../roofline.png), [raw counters](../results/ncu-rtx4060.csv)). Instruction counts above are from `cuobjdump -sass` and `ptxas -v` (CUDA 13.3, sm_89).
+
+Counters against `reg2d` ([chart](../img/counters.png)): global load requests fall from 34.1 million to 8.52 million (16.2 sectors each, a full 512-byte warp access) and the FMA pipe rises from 48.8% to 57.8% busy.

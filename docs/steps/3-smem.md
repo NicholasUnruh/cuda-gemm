@@ -25,3 +25,5 @@ Step 4 makes each shared load feed several FMAs.
 ## Profile
 
 Nsight Compute, one profiled launch at 4096³: 15.30 FLOP per DRAM byte and 1126.9 GFLOP/s ([roofline](../roofline.png), [raw counters](../results/ncu-rtx4060.csv)). Instruction counts above are from `cuobjdump -sass` and `ptxas -v` (CUDA 13.3, sm_89).
+
+Counters against `coalesced` ([chart](../img/counters.png)): global load requests fall from 4,295 million to 135 million, DRAM reads barely move (8.98 to 8.92 GB), and a new stall appears: MIO throttle (shared-memory queue full) at 23.6 warps per issue cycle, which confirms the shared-load limit above.
