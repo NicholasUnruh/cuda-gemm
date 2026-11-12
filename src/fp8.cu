@@ -186,7 +186,9 @@ __global__ void __launch_bounds__(kThreads)
   fp8_gemm<false>(M, N, K, alpha, A, sa, Bt, sb, beta, C);
 }
 
-__global__ void __launch_bounds__(kThreads)
+// The MX epilogue needs 182 registers, which fits one block per SM. Capping
+// it at 128 (two blocks) spills 148 bytes but is 9% faster (step 9 note).
+__global__ void __launch_bounds__(kThreads, 2)
     mxfp8_kernel(int M, int N, int K, float alpha, const uint8_t *A,
                  const uint8_t *sa, const uint8_t *Bt, const uint8_t *sb,
                  float beta, float *C) {

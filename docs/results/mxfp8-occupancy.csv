@@ -1,0 +1,11 @@
+# NVIDIA GeForce RTX 4060 (sm_89), driver 610.88, CUDA 13.3, WSL2; GPU idle; 2026-11-12 07:59 UTC; 4096^3, three runs each.
+# mxfp8_kernel with __launch_bounds__(256): 182 registers, one block per SM.
+# With __launch_bounds__(256, 2): at most 128 registers, two blocks per SM; ptxas: 128 bytes stack frame, 148 bytes spill stores, 148 bytes spill loads.
+# cublaslt_gflops is per-tensor cuBLASLt FP8 on the same codes; max_rel_err against exact FP64 dot products.
+blocks_per_sm,gflops,cublaslt_gflops,pct_cublaslt,max_rel_err
+1,35467.0,59543.8,59.6,5.26e-05
+1,35452.0,59551.7,59.5,6.73e-05
+1,37951.3,62736.2,60.5,6.46e-05
+2,38905.9,57733.0,67.4,5.26e-05
+2,38626.2,62906.7,61.4,6.73e-05
+2,38450.1,61528.2,62.5,6.46e-05
