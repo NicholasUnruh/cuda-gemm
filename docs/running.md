@@ -15,8 +15,8 @@ The PC is someone's gaming machine: time only when `nvidia-smi` shows it idle, s
 ## Colab (free T4)
 
 1. Runtime → Change runtime type → T4 GPU.
-2. While the repo is private, upload a zip (`git archive -o cuda-gemm.zip HEAD`) and unzip it, or clone with a fine-grained read-only token.
-3. In a cell:
+2. In a cell: `!git clone https://github.com/NicholasUnruh/cuda-gemm`.
+3. Then:
 
 ```sh
 !nvidia-smi
