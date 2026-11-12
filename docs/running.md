@@ -29,6 +29,8 @@ The PC is someone's gaming machine: time only when `nvidia-smi` shows it idle, s
 ncu --set full -o build/naive ./build/bench naive 4096
 ```
 
+`make profile` collects the roofline counters for every kernel at 4096 as CSV; `uv run scripts/roofline.py <csv> docs/roofline.png "<GPU>"` plots them. Both are untested: the RTX 4060's Windows driver refuses counter access (`ERR_NVGPUCTRPERM`) until GPU performance counters are enabled for all users in the NVIDIA Control Panel.
+
 Open the report in Nsight Compute. The memory-throughput and occupancy sections explain most of the gap to cuBLAS at each step.
 
 ## Recording a result
