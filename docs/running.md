@@ -10,7 +10,7 @@ The README numbers come from an RTX 4060 (sm_89, CUDA 13.3, WSL2):
 make bench ARCH=sm_89 KERNEL=vec
 ```
 
-`bench` times each size against cuBLAS on the same inputs and prints CSV: milliseconds, GFLOPS, % of cuBLAS and `max_rel_err`. It exits non-zero when the error exceeds the tolerance (1e-4 for FP32 kernels, 1e-3 for the FP16-input `wmma`).
+`bench` times each size against cuBLAS on the same inputs and prints CSV: milliseconds, GFLOPS, % of cuBLAS and `max_rel_err`. It exits non-zero when the error exceeds the tolerance (1e-4 for FP32 kernels, 1e-3 for the FP16-input `wmma` and `cpasync`).
 
 Time only when `nvidia-smi` shows the GPU idle; other work on the GPU slows cuBLAS and the kernel unevenly. Raw runs are in [results/rtx4060.csv](results/rtx4060.csv).
 

@@ -4,14 +4,15 @@ Matrix multiply in CUDA, built step by step from a naive kernel to tensor cores,
 
 | Step | Kernel | Idea | GFLOPS (4096³) | % cuBLAS |
 |---|---|---|---:|---:|
-| 1 | `naive` | One thread per output | 123.6 | 1.7 |
+| 1 | [`naive`](docs/steps/1-naive.md) | One thread per output | 123.6 | 1.7 |
 | 2 | [`coalesced`](docs/steps/2-coalesced.md) | Warps read B and write C contiguously | 864.3 | 12.4 |
 | 3 | [`smem`](docs/steps/3-smem.md) | Shared-memory tiles | 1,187 | 16.3 |
 | 4 | [`reg2d`](docs/steps/4-reg2d.md) | 2D register blocking per thread | 6,545 | 80.4 |
 | 5 | [`vec`](docs/steps/5-vec.md) | 128-bit loads, transposed A tile | 7,053 | 88.1 |
 | 6 | [`wmma`](docs/steps/6-wmma.md) | Tensor cores (FP16 in, FP32 accumulate) | 20,731 | 65.3 |
+| 7 | [`cpasync`](docs/steps/7-cpasync.md) | `cp.async` double buffering, grouped block order | 28,823 | 95.3 |
 
-Measured on an RTX 4060 (sm_89, CUDA 13.3), median of three runs ([raw](docs/results/rtx4060.csv)). `wmma` is compared with FP16-input cuBLAS.
+Measured on an RTX 4060 (sm_89, CUDA 13.3), median of three runs ([raw](docs/results/rtx4060.csv)). `wmma` and `cpasync` are compared with FP16-input cuBLAS.
 
 ![Roofline of every kernel on the RTX 4060](docs/roofline.png)
 
@@ -41,7 +42,7 @@ make bench ARCH=sm_89 KERNEL=vec  # on a GPU: time, GFLOPS, % cuBLAS, error as C
 | `src/<step>.cu` | One kernel per step |
 | `src/bench.cu` | Harness: timing, cuBLAS reference, error check |
 | `scripts/` | Roofline, counter and tiling plots from the result CSVs |
-| `docs/steps/` | One note per step |
+| `docs/steps/`, `docs/journal/` | One note per step; dated process notes |
 | `docs/results/` | Raw benchmark and Nsight Compute CSVs |
 
 ## Results and verification
@@ -54,7 +55,6 @@ make bench ARCH=sm_89 KERNEL=vec  # on a GPU: time, GFLOPS, % cuBLAS, error as C
 
 - One GPU (RTX 4060 under WSL2); results on other architectures will differ.
 - Tiled kernels need M, N and K to be multiples of 128; there is no edge handling.
-- No double buffering or `cp.async`: loads and math do not overlap, which is the main gap left in `wmma`.
 
 ## Related projects
 
