@@ -1,16 +1,16 @@
 # Running on a GPU
 
-This laptop has no NVIDIA GPU. `make check` compiles locally; timing needs a GPU.
+`make check` compiles for sm_75, sm_80 and sm_89 without a GPU; timing needs one.
 
-## RTX 4060 over SSH (bro-run)
+## RTX 4060
 
-The README numbers come from an RTX 4060 (sm_89, CUDA 13.3) in WSL on a shared PC. `bro-run` mirrors the repo there and runs one command:
+The README numbers come from an RTX 4060 (sm_89, CUDA 13.3) under WSL2:
 
 ```sh
-bro-run -- make bench ARCH=sm_89 KERNEL=vec
+make bench ARCH=sm_89 KERNEL=vec
 ```
 
-The PC is someone's gaming machine: time only when `nvidia-smi` shows it idle, since a game on the GPU slows cuBLAS and the kernel unevenly. Raw runs are in [results/rtx4060.csv](results/rtx4060.csv).
+Time only when `nvidia-smi` shows the GPU idle; anything else on it slows cuBLAS and the kernel unevenly. Raw runs are in [results/rtx4060.csv](results/rtx4060.csv).
 
 ## Colab (free T4)
 
