@@ -44,6 +44,7 @@ static const Kernel kKernels[] = {
     {"reg2d", gemm_reg2d, nullptr},
     {"vec", gemm_vec, nullptr},
     {"wmma", nullptr, gemm_wmma},
+    {"cpasync", nullptr, gemm_cpasync},
 };
 // clang-format on
 

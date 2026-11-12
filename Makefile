@@ -32,7 +32,7 @@ bench: build/bench
 # base and times one launch, so its rates differ from `make bench`; peaks come
 # from the same run.
 NCU ?= $(CUDA_HOME)/bin/ncu
-KERNELS := naive coalesced smem reg2d vec wmma
+KERNELS := naive coalesced smem reg2d vec wmma cpasync
 STALLS := long_scoreboard mio_throttle short_scoreboard barrier math_pipe_throttle lg_throttle not_selected
 comma := ,
 empty :=
