@@ -34,6 +34,7 @@ struct Kernel {
 // Add each new kernel here.
 static const Kernel kKernels[] = {
     {"naive", gemm_naive},
+    {"coalesced", gemm_coalesced},
 };
 
 static const int kWarmup = 2;

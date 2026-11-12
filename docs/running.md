@@ -2,6 +2,16 @@
 
 This laptop has no NVIDIA GPU. `make check` compiles locally; timing needs a GPU.
 
+## RTX 4060 over SSH (bro-run)
+
+The README numbers come from an RTX 4060 (sm_89, CUDA 13.3) in WSL on a shared PC. `bro-run` mirrors the repo there and runs one command:
+
+```sh
+bro-run -- make bench ARCH=sm_89 KERNEL=vec
+```
+
+The PC is someone's gaming machine: time only when `nvidia-smi` shows it idle, since a game on the GPU slows cuBLAS and the kernel unevenly. Raw runs are in [results/rtx4060.csv](results/rtx4060.csv).
+
 ## Colab (free T4)
 
 1. Runtime → Change runtime type → T4 GPU.

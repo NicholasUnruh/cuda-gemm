@@ -7,3 +7,5 @@ using GemmFn = void (*)(int M, int N, int K, float alpha, const float *A,
 
 void gemm_naive(int M, int N, int K, float alpha, const float *A,
                 const float *B, float beta, float *C);
+void gemm_coalesced(int M, int N, int K, float alpha, const float *A,
+                    const float *B, float beta, float *C);
