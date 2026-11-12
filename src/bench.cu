@@ -9,30 +9,18 @@
 #include <random>
 #include <vector>
 
+#include <cuda_fp8.h>
+
 #include "gemm.cuh"
+#include "quant.cuh"
+#include "util.cuh"
 
-#define CUDA_CHECK(x)                                   \
-  do {                                                  \
-    cudaError_t e = (x);                                \
-    if (e != cudaSuccess) {                             \
-      fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, \
-              cudaGetErrorString(e));                   \
-      exit(2);                                          \
-    }                                                   \
-  } while (0)
-#define CUBLAS_CHECK(x)                                            \
-  do {                                                             \
-    if ((x) != CUBLAS_STATUS_SUCCESS) {                            \
-      fprintf(stderr, "%s:%d cuBLAS error\n", __FILE__, __LINE__); \
-      exit(2);                                                     \
-    }                                                              \
-  } while (0)
-
-// Exactly one of fn (FP32 inputs) and half_fn (FP16 inputs) is set.
+// Exactly one of fn (FP32 inputs), half_fn (FP16) and fp8_fn (E4M3) is set.
 struct Kernel {
   const char *name;
   GemmFn fn;
   GemmHalfFn half_fn;
+  GemmFp8Fn fp8_fn;
 };
 
 // Add each new kernel here.
@@ -45,15 +33,17 @@ static const Kernel kKernels[] = {
     {"vec", gemm_vec, nullptr},
     {"wmma", nullptr, gemm_wmma},
     {"cpasync", nullptr, gemm_cpasync},
+    {"fp8", nullptr, nullptr, gemm_fp8},
 };
 // clang-format on
 
-static const int kWarmup = 2;
-static const int kReps = 10;
 // max |C - ref| / max |ref|. FP32 kernels are checked against cublasSgemm.
 // FP16-input kernels are checked against cublasGemmEx on the same FP16
 // inputs with FP32 accumulation: summation order and the tensor cores'
-// internal rounding differ, so they get a 10x looser bound.
+// internal rounding differ, so they get a 10x looser bound. FP8 kernels are
+// checked against exact (FP64) dot products of their E4M3 inputs instead,
+// because the FP8 tensor cores truncate partial sums (step 8 note) and
+// cuBLASLt is itself off by about 1e-4; its error is printed as a comment.
 static const float kTolerance = 1e-4f;
 static const float kHalfTolerance = 1e-3f;
 
@@ -75,30 +65,41 @@ static void gemm_cublas_half(int M, int N, int K, float alpha, const __half *A,
                             CUBLAS_GEMM_DEFAULT));
 }
 
-// Mean milliseconds per call of run() over kReps, after kWarmup calls.
-template <class Run>
-static float time_ms(Run run) {
-  for (int i = 0; i < kWarmup; ++i) run();
-  CUDA_CHECK(cudaGetLastError());
-  cudaEvent_t start, stop;
-  CUDA_CHECK(cudaEventCreate(&start));
-  CUDA_CHECK(cudaEventCreate(&stop));
-  CUDA_CHECK(cudaEventRecord(start));
-  for (int i = 0; i < kReps; ++i) run();
-  CUDA_CHECK(cudaEventRecord(stop));
-  CUDA_CHECK(cudaEventSynchronize(stop));
-  float ms = 0.f;
-  CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
-  CUDA_CHECK(cudaEventDestroy(start));
-  CUDA_CHECK(cudaEventDestroy(stop));
-  return ms / kReps;
+// Error of C against exact dot products of the quantized inputs, on 4,096
+// sampled entries: max |C - exact| / max |exact|. A and Bt are E4M3 codes.
+static double exact_err(int n, float alpha, const uint8_t *A, const uint8_t *Bt,
+                        const float *C) {
+  size_t count = size_t(n) * n;
+  std::vector<uint8_t> a(count), b(count);
+  std::vector<float> c(count);
+  CUDA_CHECK(cudaMemcpy(a.data(), A, count, cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(b.data(), Bt, count, cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(c.data(), C, count * 4, cudaMemcpyDeviceToHost));
+  double lut[256];
+  for (int v = 0; v < 256; ++v)
+    lut[v] = __half2float(__nv_cvt_fp8_to_halfraw(uint8_t(v), __NV_E4M3));
+  std::mt19937 rng(7);
+  double max_err = 0, max_ref = 0;
+  for (int s = 0; s < 4096; ++s) {
+    int i = rng() % n, j = rng() % n;
+    double exact = 0;
+    for (int k = 0; k < n; ++k)
+      exact += lut[a[size_t(i) * n + k]] * lut[b[size_t(j) * n + k]];
+    exact *= alpha;
+    max_err = fmax(max_err, fabs(c[size_t(i) * n + j] - exact));
+    max_ref = fmax(max_ref, fabs(exact));
+  }
+  return max_err / max_ref;
 }
+
+int run_numerics();  // numerics.cu
 
 int main(int argc, char **argv) {
   if (argc < 2) {
-    fprintf(stderr, "usage: %s <kernel> [size ...]\n", argv[0]);
+    fprintf(stderr, "usage: %s <kernel> [size ...] | numerics\n", argv[0]);
     return 2;
   }
+  if (strcmp(argv[1], "numerics") == 0) return run_numerics();
   const Kernel *kernel = nullptr;
   for (const Kernel &k : kKernels)
     if (strcmp(k.name, argv[1]) == 0) kernel = &k;
@@ -115,11 +116,15 @@ int main(int argc, char **argv) {
     }
   }
   if (sizes.empty()) sizes = {256, 512, 1024, 2048, 4096};
-  const float tolerance = kernel->half_fn ? kHalfTolerance : kTolerance;
+  const float tolerance = kernel->fn ? kTolerance : kHalfTolerance;
 
   CUBLAS_CHECK(cublasCreate(&g_handle));
   cudaDeviceProp prop;
   CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
+  if (kernel->fp8_fn && prop.major * 10 + prop.minor < 89) {
+    fprintf(stderr, "%s needs FP8 tensor cores (sm_89 or newer)\n", argv[1]);
+    return 2;
+  }
   printf("# %s\nkernel,n,ms,gflops,cublas_gflops,pct_cublas,max_rel_err\n",
          prop.name);
 
@@ -143,9 +148,37 @@ int main(int argc, char **argv) {
     CUDA_CHECK(cudaMemcpy(B, hB.data(), bytes, cudaMemcpyHostToDevice));
 
     float ms, ref_ms;
+    double exact = -1;  // FP8 only: error against exact dot products
     if (kernel->fn) {
       ms = time_ms([&] { kernel->fn(n, n, n, 1.f, A, B, 0.f, C); });
       ref_ms = time_ms([&] { gemm_cublas(n, n, n, 1.f, A, B, 0.f, Ref); });
+    } else if (kernel->fp8_fn) {
+      // E4M3 codes with per-tensor scales, quantized once outside the timed
+      // loop. B's random values are used as Bt (N x K): FP8 needs B K-major.
+      uint8_t *Aq, *Bq;
+      unsigned *amax;
+      CUDA_CHECK(cudaMalloc(&Aq, count));
+      CUDA_CHECK(cudaMalloc(&Bq, count));
+      CUDA_CHECK(cudaMalloc(&amax, 2 * sizeof(unsigned)));
+      quant_amax(A, count, amax);
+      quant_amax(B, count, amax + 1);
+      quant_e4m3_tensor(A, count, amax, Aq);
+      quant_e4m3_tensor(B, count, amax + 1, Bq);
+      unsigned bits[2];
+      CUDA_CHECK(cudaMemcpy(bits, amax, sizeof(bits), cudaMemcpyDeviceToHost));
+      float am[2];
+      memcpy(am, bits, sizeof(am));
+      // Each code is x * 448 / amax, so the product carries (448 / amax)^2.
+      const float alpha = float(double(am[0]) / 448.0 * am[1] / 448.0);
+      LtFp8 lt(n, n, n);
+      ms = time_ms([&] { kernel->fp8_fn(n, n, n, alpha, Aq, Bq, 0.f, C); });
+      ref_ms = time_ms([&] { lt.run(alpha, Aq, Bq, 0.f, Ref); });
+      exact = exact_err(n, alpha, Aq, Bq, C);
+      printf("# cublaslt,%d,max_rel_err vs exact %.2e\n", n,
+             exact_err(n, alpha, Aq, Bq, Ref));
+      CUDA_CHECK(cudaFree(Aq));
+      CUDA_CHECK(cudaFree(Bq));
+      CUDA_CHECK(cudaFree(amax));
     } else {
       // FP16 copies of A and B, converted once outside the timed loop.
       std::vector<__half> hAh(count), hBh(count);
@@ -172,7 +205,7 @@ int main(int argc, char **argv) {
       max_err = fmax(max_err, fabs(double(hC[i]) - hRef[i]));
       max_ref = fmax(max_ref, fabs(double(hRef[i])));
     }
-    double rel = max_err / max_ref;
+    double rel = exact >= 0 ? exact : max_err / max_ref;
     double flops = 2.0 * n * n * n;
     double gflops = flops / (ms * 1e6), ref_gflops = flops / (ref_ms * 1e6);
     printf("%s,%d,%.4f,%.1f,%.1f,%.1f,%.2e\n", argv[1], n, ms, gflops,

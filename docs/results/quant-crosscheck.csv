@@ -1,0 +1,30 @@
+# NVIDIA GeForce RTX 4060 (sm_89), driver 610.88, CUDA 13.3, WSL2; 2026-11-12 04:35 UTC
+# make crosscheck CHIPLAB=<openroad-chip-lab main, 2026-11-12>: GPU quantizers vs the C++ references, byte for byte.
+format,data,elements,code_mismatches,scale_mismatches
+e4m3_tensor,gaussian,1048576,0,0
+e4m3_tensor,laplace,1048576,0,0
+e4m3_tensor,outliers,1048576,0,0
+e4m3_tensor,rows,1048576,0,0
+e4m3_tensor,sparse,1048576,0,0
+e4m3_tensor,wide,1048576,0,0
+mxfp8,gaussian,1048576,0,0
+mxfp8,laplace,1048576,0,0
+mxfp8,outliers,1048576,0,0
+mxfp8,rows,1048576,0,0
+mxfp8,sparse,1048576,0,0
+mxfp8,wide,1048576,0,0
+mxfp8,ties,1048576,0,0
+mxfp4,gaussian,1048576,0,0
+mxfp4,laplace,1048576,0,0
+mxfp4,outliers,1048576,0,0
+mxfp4,rows,1048576,0,0
+mxfp4,sparse,1048576,0,0
+mxfp4,wide,1048576,0,0
+mxfp4,ties,1048576,0,0
+nvfp4,gaussian,1048576,0,0
+nvfp4,laplace,1048576,0,0
+nvfp4,outliers,1048576,0,0
+nvfp4,rows,1048576,0,0
+nvfp4,sparse,1048576,0,0
+nvfp4,wide,1048576,0,0
+# 27262976 elements, 0 mismatched bytes

@@ -10,9 +10,21 @@ The README numbers come from an RTX 4060 (sm_89, CUDA 13.3, WSL2):
 make bench ARCH=sm_89 KERNEL=vec
 ```
 
-`bench` times each size against cuBLAS on the same inputs and prints CSV: milliseconds, GFLOPS, % of cuBLAS and `max_rel_err`. It exits non-zero when the error exceeds the tolerance (1e-4 for FP32 kernels, 1e-3 for the FP16-input `wmma` and `cpasync`).
+`bench` times each size against cuBLAS on the same inputs and prints CSV: milliseconds, GFLOPS, % of cuBLAS and `max_rel_err`. It exits non-zero when the error exceeds the tolerance (1e-4 for FP32 kernels, 1e-3 for the FP16-input `wmma` and `cpasync`). For `fp8` the reference is the exact FP64 dot product of the same E4M3 codes, tolerance 1e-3; a comment line gives cuBLASLt FP8's error against the same reference.
 
 Time only when `nvidia-smi` shows the GPU idle; other work on the GPU slows cuBLAS and the kernel unevenly. Raw runs are in [results/rtx4060.csv](results/rtx4060.csv).
+
+## Number formats
+
+These need FP8 tensor cores (sm_89 or newer):
+
+```sh
+./build/bench numerics          # error on the chip-lab distributions, quantize and GEMM cost per format
+make probe ARCH=sm_89           # how one FP8 mma.sync adds: alignment width, rounding
+make crosscheck ARCH=sm_89 CHIPLAB=../openroad-chip-lab   # GPU quantizers vs chip-lab C++, byte for byte
+```
+
+Recorded output: [numerics](results/numerics-rtx4060.csv), [probe](results/mma-probe-rtx4060.csv), [cross-check](results/quant-crosscheck.csv).
 
 ## Google Colab (T4)
 

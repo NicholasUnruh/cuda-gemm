@@ -1,5 +1,6 @@
 #include <mma.h>
 
+#include "async.cuh"
 #include "gemm.cuh"
 
 using namespace nvcuda;
@@ -12,35 +13,7 @@ constexpr int FM = WM / 16, FN = WN / 16;      // 4 x 2 16x16 fragments per warp
 constexpr int kPad = 8;                        // as in wmma.cu
 constexpr int LDA = BK + kPad, LDB = BN + kPad;
 constexpr int kStages = 2;
-// Blocks are launched in groups of kGroup block rows, column by column inside a
-// group, so the blocks resident at one time share A rows and B columns in L2.
-constexpr int kGroup = 8;
-
-// 16-byte copy from global to shared memory that does not wait for the data.
-// sm_80+ issues cp.async (global -> L2 -> shared, no registers); older GPUs
-// fall back to an ordinary load and store, which is correct but not async.
-__device__ __forceinline__ void cp_async16(void *smem, const void *gmem) {
-#if __CUDA_ARCH__ >= 800
-  unsigned s = static_cast<unsigned>(__cvta_generic_to_shared(smem));
-  asm volatile("cp.async.cg.shared.global [%0], [%1], 16;\n" ::"r"(s),
-               "l"(gmem));
-#else
-  *reinterpret_cast<uint4 *>(smem) = *reinterpret_cast<const uint4 *>(gmem);
-#endif
-}
-// Closes the group of copies issued since the last commit.
-__device__ __forceinline__ void cp_async_commit() {
-#if __CUDA_ARCH__ >= 800
-  asm volatile("cp.async.commit_group;\n" ::);
-#endif
-}
-// Waits until at most n committed groups are still in flight.
-template <int n>
-__device__ __forceinline__ void cp_async_wait() {
-#if __CUDA_ARCH__ >= 800
-  asm volatile("cp.async.wait_group %0;\n" ::"n"(n));
-#endif
-}
+constexpr int kGroup = 8;  // block rows per launch group, see grouped_tile
 
 // Step 6 with the K loop software-pipelined: two shared-memory buffers per
 // operand. While the warps multiply tile k out of one buffer, cp.async copies
@@ -52,11 +25,8 @@ __global__ void __launch_bounds__(kThreads)
   __shared__ __align__(128) __half Bs[kStages][BK * LDB];
   const int tid = threadIdx.x, warp = tid / 32;
   const int warpRow = warp / (BN / WN), warpCol = warp % (BN / WN);
-  // Block index -> (block row, block column), grouped as described at kGroup.
-  const int cols = N / BN, rows = M / BM, perGroup = kGroup * cols;
-  const int first = blockIdx.x / perGroup * kGroup;
-  const int height = min(kGroup, rows - first), inGroup = blockIdx.x % perGroup;
-  const int blockRow = first + inGroup % height, blockCol = inGroup / height;
+  int blockRow, blockCol;
+  grouped_tile(M / BM, N / BN, kGroup, blockRow, blockCol);
   A += blockRow * BM * K;
   B += blockCol * BN;
   C += blockRow * BM * N + blockCol * BN;
