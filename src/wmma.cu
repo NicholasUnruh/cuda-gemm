@@ -4,8 +4,8 @@
 
 using namespace nvcuda;
 
-constexpr int BM = 128, BN = 128, BK = 32;  // block tile of C, K step
-constexpr int WM = 64, WN = 32;             // warp tile of C
+constexpr int BM = 128, BN = 128, BK = 32;     // block tile of C, K step
+constexpr int WM = 64, WN = 32;                // warp tile of C
 constexpr int kWarps = (BM / WM) * (BN / WN);  // 8 warps, 2 x 4
 constexpr int kThreads = kWarps * 32;          // 256
 constexpr int FM = WM / 16, FN = WN / 16;      // 4 x 2 16x16 fragments per warp
@@ -21,9 +21,9 @@ constexpr int LDA = BK + kPad, LDB = BN + kPad;
 // halves per thread per load); each warp then multiplies its 64x32 slice of C
 // as 4x2 fragments, reusing every A fragment twice and every B fragment four
 // times from registers.
-__global__ __launch_bounds__(kThreads) void wmma_kernel(
-    int M, int N, int K, float alpha, const __half *A, const __half *B,
-    float beta, float *C) {
+__global__ void __launch_bounds__(kThreads)
+    wmma_kernel(int M, int N, int K, float alpha, const __half *A,
+                const __half *B, float beta, float *C) {
   __shared__ __align__(128) __half As[BM * LDA];
   __shared__ __align__(128) __half Bs[BK * LDB];
   const int tid = threadIdx.x, warp = tid / 32;
@@ -55,11 +55,14 @@ __global__ __launch_bounds__(kThreads) void wmma_kernel(
       wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, wmma::row_major> a[FM];
       wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, wmma::row_major> b[FN];
       for (int i = 0; i < FM; ++i)
-        wmma::load_matrix_sync(a[i], &As[(warpRow * WM + i * 16) * LDA + kk], LDA);
+        wmma::load_matrix_sync(a[i], &As[(warpRow * WM + i * 16) * LDA + kk],
+                               LDA);
       for (int j = 0; j < FN; ++j)
-        wmma::load_matrix_sync(b[j], &Bs[kk * LDB + warpCol * WN + j * 16], LDB);
+        wmma::load_matrix_sync(b[j], &Bs[kk * LDB + warpCol * WN + j * 16],
+                               LDB);
       for (int i = 0; i < FM; ++i)
-        for (int j = 0; j < FN; ++j) wmma::mma_sync(acc[i][j], a[i], b[j], acc[i][j]);
+        for (int j = 0; j < FN; ++j)
+          wmma::mma_sync(acc[i][j], a[i], b[j], acc[i][j]);
     }
     __syncthreads();
   }

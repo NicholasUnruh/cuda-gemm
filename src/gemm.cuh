@@ -15,11 +15,11 @@ void gemm_naive(int M, int N, int K, float alpha, const float *A,
                 const float *B, float beta, float *C);
 void gemm_coalesced(int M, int N, int K, float alpha, const float *A,
                     const float *B, float beta, float *C);
-void gemm_smem(int M, int N, int K, float alpha, const float *A,
-               const float *B, float beta, float *C);
+void gemm_smem(int M, int N, int K, float alpha, const float *A, const float *B,
+               float beta, float *C);
 void gemm_reg2d(int M, int N, int K, float alpha, const float *A,
                 const float *B, float beta, float *C);
-void gemm_vec(int M, int N, int K, float alpha, const float *A,
-              const float *B, float beta, float *C);
+void gemm_vec(int M, int N, int K, float alpha, const float *A, const float *B,
+              float beta, float *C);
 void gemm_wmma(int M, int N, int K, float alpha, const __half *A,
                const __half *B, float beta, float *C);

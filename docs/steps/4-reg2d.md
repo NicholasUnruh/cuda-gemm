@@ -22,4 +22,4 @@ Global memory is still accessed 4 bytes per instruction: 8 `LDG.E` per K step, a
 
 ## Profile
 
-Nsight Compute counters (FMA-pipe utilisation, issue stalls, achieved occupancy) are pending: the PC's driver blocks them (`ERR_NVGPUCTRPERM`). Counts above are from `cuobjdump -sass` and `ptxas -v` (CUDA 13.3, sm_89).
+Nsight Compute, one profiled launch at 4096³: 57.08 FLOP per DRAM byte and 7044.4 GFLOP/s ([roofline](../roofline.png), [raw counters](../results/ncu-rtx4060.csv)). Instruction counts above are from `cuobjdump -sass` and `ptxas -v` (CUDA 13.3, sm_89).

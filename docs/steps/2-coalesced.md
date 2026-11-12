@@ -26,4 +26,4 @@ Every `FFMA` still needs two global loads, and threads share data only through t
 
 ## Profile
 
-Nsight Compute counters (sectors per request, L1 hit rate) are pending: the PC's driver blocks them (`ERR_NVGPUCTRPERM`). Counts above are from `cuobjdump -sass` and `ptxas -v` (CUDA 13.3, sm_89).
+Nsight Compute, one profiled launch at 4096³: 15.16 FLOP per DRAM byte and 825.4 GFLOP/s ([roofline](../roofline.png), [raw counters](../results/ncu-rtx4060.csv)). Instruction counts above are from `cuobjdump -sass` and `ptxas -v` (CUDA 13.3, sm_89).
