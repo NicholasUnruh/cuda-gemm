@@ -1,7 +1,7 @@
 .PHONY: check bench profile toolchain clean
 
-# Local: the micromamba CUDA env from `make toolchain` (no GPU; compiles only).
-# Colab or a GPU box: CUDA_HOME=/usr/local/cuda, system g++.
+# Without a GPU: the micromamba CUDA env from `make toolchain` (compiles only).
+# On a GPU machine or Colab: CUDA_HOME=/usr/local/cuda, system g++.
 LOCAL_CUDA := $(HOME)/.local/opt/cuda-12.9
 CUDA_HOME ?= $(if $(wildcard $(LOCAL_CUDA)/bin/nvcc),$(LOCAL_CUDA),/usr/local/cuda)
 NVCC := $(CUDA_HOME)/bin/nvcc
@@ -29,7 +29,8 @@ bench: build/bench
 
 # Needs a GPU and Nsight Compute: counters for one launch of every kernel at
 # 4096, as raw CSV on stdout (feed to scripts/roofline.py). ncu locks clocks to
-# base, so its times are slower than `make bench`; peaks come from the same run.
+# base and times one launch, so its rates differ from `make bench`; peaks come
+# from the same run.
 NCU ?= $(CUDA_HOME)/bin/ncu
 KERNELS := naive coalesced smem reg2d vec wmma
 STALLS := long_scoreboard mio_throttle short_scoreboard barrier math_pipe_throttle lg_throttle not_selected

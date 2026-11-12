@@ -24,4 +24,4 @@ Nothing overlaps the next tile's global load with this tile's math (double buffe
 
 ## Profile
 
-Nsight Compute counters (bank conflicts, memory throughput) are pending: the PC's driver blocks them (`ERR_NVGPUCTRPERM`). Counts above are from `cuobjdump -sass` and `ptxas -v` (CUDA 13.3, sm_89).
+Nsight Compute, one profiled launch at 4096³: 58.26 FLOP per DRAM byte and 8352.6 GFLOP/s ([roofline](../roofline.png), [raw counters](../results/ncu-rtx4060.csv)). Instruction counts above are from `cuobjdump -sass` and `ptxas -v` (CUDA 13.3, sm_89).

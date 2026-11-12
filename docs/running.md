@@ -1,18 +1,20 @@
 # Running on a GPU
 
-`make check` compiles for sm_75, sm_80 and sm_89 without a GPU; timing needs one.
+`make check` compiles every kernel for sm_75, sm_80 and sm_89 without a GPU. Timing and profiling need one.
 
-## RTX 4060
+## Benchmark
 
-The README numbers come from an RTX 4060 (sm_89, CUDA 13.3) under WSL2:
+The README numbers come from an RTX 4060 (sm_89, CUDA 13.3, WSL2):
 
 ```sh
 make bench ARCH=sm_89 KERNEL=vec
 ```
 
-Time only when `nvidia-smi` shows the GPU idle; anything else on it slows cuBLAS and the kernel unevenly. Raw runs are in [results/rtx4060.csv](results/rtx4060.csv).
+`bench` times each size against cuBLAS on the same inputs and prints CSV: milliseconds, GFLOPS, % of cuBLAS and `max_rel_err`. It exits non-zero when the error exceeds the tolerance (1e-4 for FP32 kernels, 1e-3 for the FP16-input `wmma`).
 
-## Colab (free T4)
+Time only when `nvidia-smi` shows the GPU idle; other work on the GPU slows cuBLAS and the kernel unevenly. Raw runs are in [results/rtx4060.csv](results/rtx4060.csv).
+
+## Google Colab (T4)
 
 1. Runtime → Change runtime type → T4 GPU.
 2. In a cell: `!git clone https://github.com/NicholasUnruh/cuda-gemm`.
@@ -29,10 +31,17 @@ Time only when `nvidia-smi` shows the GPU idle; anything else on it slows cuBLAS
 ncu --set full -o build/naive ./build/bench naive 4096
 ```
 
-`make profile` collects the roofline counters for every kernel at 4096 as CSV; `uv run scripts/roofline.py <csv> docs/roofline.png "<GPU>"` plots them ([RTX 4060 counters](results/ncu-rtx4060.csv)). On Windows/WSL the driver refuses counter access (`ERR_NVGPUCTRPERM`) until NVIDIA Control Panel → Developer → Manage GPU Performance Counters allows all users.
+The memory-throughput and occupancy sections of the report explain most of the gap to cuBLAS at each step.
 
-Open the report in Nsight Compute. The memory-throughput and occupancy sections explain most of the gap to cuBLAS at each step.
+`make profile` collects the roofline counters for every kernel at 4096³ as CSV, and `scripts/roofline.py` plots them:
+
+```sh
+mkdir -p build && make profile ARCH=sm_89 > build/ncu.csv
+uv run scripts/roofline.py build/ncu.csv docs/roofline.png "RTX 4060"
+```
+
+The RTX 4060 counters are in [results/ncu-rtx4060.csv](results/ncu-rtx4060.csv). On Windows and WSL2 the driver refuses counter access (`ERR_NVGPUCTRPERM`) until NVIDIA Control Panel → Developer → Manage GPU Performance Counters allows all users.
 
 ## Recording a result
 
-Copy the 4096 row into the README table with the GPU name. Keep T4 numbers apart from numbers on any other GPU.
+Copy the median 4096 row into the README table with the GPU name. Keep numbers from different GPUs in separate tables.
