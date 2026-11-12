@@ -36,6 +36,7 @@ static const Kernel kKernels[] = {
     {"naive", gemm_naive},
     {"coalesced", gemm_coalesced},
     {"smem", gemm_smem},
+    {"reg2d", gemm_reg2d},
 };
 
 static const int kWarmup = 2;
