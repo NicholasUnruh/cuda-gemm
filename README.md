@@ -6,7 +6,7 @@ Matrix multiply in CUDA, step by step from a naive kernel to tensor cores. Each 
 |---|---|---|---|---:|---:|
 | 1 | `naive` | One thread per output | RTX 4060 | 123.6 | 1.7 |
 | 2 | [`coalesced`](docs/steps/2-coalesced.md) | Warps read B and write C contiguously | RTX 4060 | 864.3 | 12.4 |
-| 3 | `smem` | Shared-memory tiles | — | — | — |
+| 3 | [`smem`](docs/steps/3-smem.md) | Shared-memory tiles | RTX 4060 | 1,187 | 16.3 |
 | 4 | `reg2d` | 2D register blocking per thread | — | — | — |
 | 5 | `vec` | 128-bit loads, transposed A tile | — | — | — |
 | 6 | `wmma` | Tensor cores (FP16 in, FP32 accumulate) | — | — | — |

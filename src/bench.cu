@@ -35,6 +35,7 @@ struct Kernel {
 static const Kernel kKernels[] = {
     {"naive", gemm_naive},
     {"coalesced", gemm_coalesced},
+    {"smem", gemm_smem},
 };
 
 static const int kWarmup = 2;
@@ -81,7 +82,13 @@ int main(int argc, char **argv) {
     return 2;
   }
   std::vector<int> sizes;
-  for (int i = 2; i < argc; ++i) sizes.push_back(atoi(argv[i]));
+  for (int i = 2; i < argc; ++i) {
+    sizes.push_back(atoi(argv[i]));
+    if (sizes.back() <= 0 || sizes.back() % 128 != 0) {
+      fprintf(stderr, "size %s: must be a positive multiple of 128\n", argv[i]);
+      return 2;
+    }
+  }
   if (sizes.empty()) sizes = {256, 512, 1024, 2048, 4096};
 
   CUBLAS_CHECK(cublasCreate(&g_handle));
