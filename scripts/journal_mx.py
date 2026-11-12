@@ -55,13 +55,14 @@ def main(dst, theme="light"):
         if f[2]:
             ax.plot(chip[(f[2], "gaussian")], i, "D", color=c["ink"], ms=5,
                     label="chip-lab C++ model" if i == 0 else None)
-        ax.text(gpu[i] * 1.15, i, f"{gpu[i]:.1e}", va="center", fontsize=7.5,
+        right = max(gpu[i], chip[(f[2], "gaussian")] if f[2] else 0)
+        ax.text(right * 1.25, i, f"{gpu[i]:.1e}", va="center", fontsize=7.5,
                 color=c["ink"])
     ax.set_xscale("log")
     ax.set_xlim(1e-5, 3e-2)
     ax.set_title("Median GEMM error, Gaussian, K = 4096", fontsize=9,
                  color=c["ink"], loc="left")
-    leg = ax.legend(frameon=False, fontsize=7, loc="lower right")
+    leg = ax.legend(frameon=False, fontsize=7, loc="upper right")
     for t in leg.get_texts():
         t.set_color(c["ink"])
 
@@ -76,14 +77,14 @@ def main(dst, theme="light"):
                 fontsize=7.5, color=c["ink"])
     ax.set_xlim(0, max(a + b for a, b in zip(g, q)) * 1.6)
     ax.set_title("Milliseconds at 4096³", fontsize=9, color=c["ink"], loc="left")
-    leg = ax.legend(frameon=False, fontsize=7, loc="lower right")
+    leg = ax.legend(frameon=False, fontsize=7, loc="upper right")
     for t in leg.get_texts():
         t.set_color(c["ink"])
 
     for ax in axes:
         ax.set_facecolor(c["surface"])
         ax.set_yticks(list(y), labels if ax is axes[0] else [])
-        ax.invert_yaxis()
+        ax.set_ylim(len(FORMATS) - 0.4, -1.4)  # top to bottom, legend room on top
         ax.tick_params(colors=c["muted"], labelsize=7.5)
         for s in ax.spines.values():
             s.set_color(c["grid"])

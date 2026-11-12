@@ -1,0 +1,25 @@
+# cuobjdump -sass / -res-usage of mxfp8_kernel (CUDA 13.3, sm_89): instruction counts in the kernel body.
+      1 BAR.LE
+      1 BAR.SYNC.DEFER_BLOCKING
+    192 FFMA
+    248 FMUL
+     69 IMAD
+      4 IMAD.HI.U32
+      9 IMAD.WIDE
+     20 IMAD.WIDE.U32
+     32 LDG.E.64
+      2 LDG.E.U16
+      2 LDGDEPBAR
+     24 LDGSTS.E.BYPASS.128
+     12 LDS
+     16 LDS.U16
+     12 LDSM.16.M88.4
+     61 LOP3.LUT
+     32 QMMA.16832.F32.E4M3.E4M3
+     55 SHF.L.U32
+      1 SHF.L.U64.HI
+     65 SHF.R.S32.HI
+     16 SHF.R.U32.HI
+      2 STS.U16
+ Function _Z12mxfp8_kerneliiifPKhS0_S0_S0_fPf:
+  REG:182 STACK:0 SHARED:41984 LOCAL:0 CONSTANT[0]:416 TEXTURE:0 SURFACE:0 SAMPLER:0
