@@ -12,8 +12,9 @@ Matrix multiply in CUDA, built step by step from a naive kernel to tensor cores,
 | 6 | [`wmma`](docs/steps/6-wmma.md) | Tensor cores (FP16 in, FP32 accumulate) | 20,731 | 65.3 |
 | 7 | [`cpasync`](docs/steps/7-cpasync.md) | `cp.async` double buffering, grouped block order | 28,823 | 95.3 |
 | 8 | [`fp8`](docs/steps/8-fp8.md) | FP8 (E4M3) `mma.sync`, FP32 promotion per K tile | 57,778 | 93.3 |
+| 9 | [`mxfp8`](docs/steps/9-mx.md) | MX block scaling: E8M0 scale per 32 elements, applied in FP32 | 37,856 | 65.5 |
 
-Measured on an RTX 4060 (sm_89, CUDA 13.3), median of three runs ([raw](docs/results/rtx4060.csv)). `wmma` and `cpasync` are compared with FP16-input cuBLAS, `fp8` with cuBLASLt FP8.
+Measured on an RTX 4060 (sm_89, CUDA 13.3), median of three runs ([raw](docs/results/rtx4060.csv)). `wmma` and `cpasync` are compared with FP16-input cuBLAS, `fp8` and `mxfp8` with per-tensor cuBLASLt FP8 (cuBLASLt has no MX scaling on Ada).
 
 ![Roofline of every kernel on the RTX 4060](docs/roofline.png)
 
@@ -51,7 +52,8 @@ make bench ARCH=sm_89 KERNEL=vec  # on a GPU: time, GFLOPS, % cuBLAS, error as C
 ## Results and verification
 
 - Every run checks `max_rel_err` and fails above 1e-4 (FP32) or 1e-3 (FP16, FP8; FP8 against exact dot products).
-- On chip-lab's test distributions, GPU FP8 and BF16 error match its bit-exact C++ models ([step 8](docs/steps/8-fp8.md)).
+- On chip-lab's test distributions, GPU error for BF16, FP8, MXFP8 and MXFP4 matches its bit-exact C++ models ([step 8](docs/steps/8-fp8.md), [step 9](docs/steps/9-mx.md)).
+- [GPU vs custom tile](docs/gpu-vs-tile.md): measured GPU throughput per format against chip-lab's predictive ASAP7 tile figures. MX scaling, cheap in silicon, costs a third of FP8 throughput on Ada.
 - Running, profiling and plots: [docs/running.md](docs/running.md).
 
 ## Limitations
