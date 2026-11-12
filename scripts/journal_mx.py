@@ -7,7 +7,8 @@ vectors (GPU against chip-lab's bit-exact C++ model) and time per 4096³ GEMM
 split into quantizing and multiplying.
 
 Usage: uv run scripts/journal_mx.py <out.png> [light|dark]
-Reads docs/results/numerics-rtx4060.csv and docs/results/chiplab-gemm-error.csv.
+Reads docs/results/numerics-rtx4060.csv, docs/results/chiplab-gemm-error.csv and
+docs/results/rtx4060.csv (median-of-three GEMM TFLOP/s for the labels).
 """
 
 import csv
@@ -19,13 +20,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from plotstyle import THEMES
 
-# (numerics format, numerics impl, chip-lab format or None, label)
+# (numerics format, numerics impl, chip-lab format or None, label, rtx4060.csv kernel or None)
 FORMATS = [
-    ("bf16", "cuBLAS", "bf16", "BF16"),
-    ("e4m3_tensor", "fp8 (step 8)", "e4m3_tensor", "FP8 per tensor"),
-    ("mxfp8", "mxfp8 (step 9)", "mxfp8", "MXFP8"),
-    ("mxfp4", "mxfp8 kernel on E2M1 values", "mxfp4", "MXFP4*"),
-    ("nvfp4", "FP16 cuBLAS on decoded values", None, "NVFP4*"),
+    ("bf16", "cuBLAS", "bf16", "BF16", None),
+    ("e4m3_tensor", "fp8 (step 8)", "e4m3_tensor", "FP8 per tensor", "fp8"),
+    ("mxfp8", "mxfp8 (step 9)", "mxfp8", "MXFP8", "mxfp8"),
+    ("mxfp4", "mxfp8 kernel on E2M1 values", "mxfp4", "MXFP4*", "mxfp4"),
+    ("nvfp4", "FP16 cuBLAS on decoded values", None, "NVFP4*", None),
 ]
 
 
@@ -41,6 +42,11 @@ def main(dst, theme="light"):
     cost = {(r[0], r[1]): r for r in rows if len(r) == 6 and r[0] != "distribution"
             and not r[1].isdigit()}
     chip = {(r[0], r[1]): float(r[2]) for r in read("docs/results/chiplab-gemm-error.csv")[1:]}
+    runs = {}
+    for r in read("docs/results/rtx4060.csv"):
+        if len(r) == 7 and r[1] == "4096":
+            runs.setdefault(r[0], []).append(float(r[3]) / 1000)
+    median = {k: sorted(v)[len(v) // 2] for k, v in runs.items() if len(v) == 3}
 
     c = THEMES[theme]
     labels = [f[3] for f in FORMATS]
@@ -72,11 +78,15 @@ def main(dst, theme="light"):
     ax.barh(y, g, color=c["tc"], height=0.6, label="GEMM")
     ax.barh(y, q, left=g, color=c["muted"], height=0.6, label="quantize both operands")
     for i in y:
-        tflops = float(cost[(FORMATS[i][0], FORMATS[i][1])][4])
-        ax.text(g[i] + q[i] + 0.1, i, f"{tflops:.1f} TFLOP/s GEMM", va="center",
+        kernel = FORMATS[i][4]
+        if kernel:
+            text = f"{median[kernel]:.1f} TFLOP/s GEMM, median of 3"
+        else:
+            text = f"{float(cost[(FORMATS[i][0], FORMATS[i][1])][4]):.1f} TFLOP/s GEMM, one run"
+        ax.text(g[i] + q[i] + 0.1, i, text, va="center",
                 fontsize=7.5, color=c["ink"])
     ax.set_xlim(0, max(a + b for a, b in zip(g, q)) * 1.6)
-    ax.set_title("Milliseconds at 4096³", fontsize=9, color=c["ink"], loc="left")
+    ax.set_title("Milliseconds at 4096³, one run", fontsize=9, color=c["ink"], loc="left")
     leg = ax.legend(frameon=False, fontsize=7, loc="upper right")
     for t in leg.get_texts():
         t.set_color(c["ink"])
