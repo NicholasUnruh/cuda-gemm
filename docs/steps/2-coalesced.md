@@ -27,3 +27,5 @@ Every `FFMA` still needs two global loads, and threads share data only through t
 ## Profile
 
 Nsight Compute, one profiled launch at 4096³: 15.16 FLOP per DRAM byte and 825.4 GFLOP/s ([roofline](../roofline.png), [raw counters](../results/ncu-rtx4060.csv)). Instruction counts above are from `cuobjdump -sass` and `ptxas -v` (CUDA 13.3, sm_89).
+
+Counters against `naive` ([chart](../img/counters.png)): the same 4,295 million global load requests, but 2.5 sectors per request instead of 16.5, and the LG-throttle stall (global load queue full) falls from 211 to 18.3 warps per issue cycle.

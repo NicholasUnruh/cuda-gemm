@@ -17,7 +17,13 @@ Measured on an RTX 4060 (sm_89, CUDA 13.3), median of three runs ([raw](docs/res
 
 ## Why it matters
 
-GEMM dominates deep-learning training and inference. Each step removes one bottleneck (uncoalesced loads, global traffic, shared-memory bandwidth, instruction issue, FP32 math) and explains the gain from SASS and Nsight Compute counters.
+GEMM dominates deep-learning training and inference. Each step removes one bottleneck (uncoalesced loads, global traffic, shared-memory bandwidth, instruction issue, FP32 math) and explains the gain from SASS and Nsight Compute counters:
+
+![Nsight Compute counters per kernel](docs/img/counters.png)
+
+Tiles per step, to scale; the global loads they imply match the counters exactly for steps 1–5:
+
+![Block, warp and thread tiles per step](docs/img/tiling.png)
 
 ## Quick start
 
@@ -34,7 +40,7 @@ make bench ARCH=sm_89 KERNEL=vec  # on a GPU: time, GFLOPS, % cuBLAS, error as C
 | `src/gemm.cuh` | Launcher signatures shared by every kernel |
 | `src/<step>.cu` | One kernel per step |
 | `src/bench.cu` | Harness: timing, cuBLAS reference, error check |
-| `scripts/roofline.py` | Roofline plot from Nsight Compute CSV |
+| `scripts/` | Roofline, counter and tiling plots from the result CSVs |
 | `docs/steps/` | One note per step |
 | `docs/results/` | Raw benchmark and Nsight Compute CSVs |
 
@@ -42,7 +48,7 @@ make bench ARCH=sm_89 KERNEL=vec  # on a GPU: time, GFLOPS, % cuBLAS, error as C
 
 - Every run checks `max_rel_err` against cuBLAS and fails above 1e-4 (FP32) or 1e-3 (FP16 inputs).
 - Each step note in [docs/steps/](docs/steps/) gives what changed, why it is faster and what limits it next.
-- Benchmarking, Nsight Compute profiling and the roofline: [docs/running.md](docs/running.md).
+- Benchmarking, profiling and plots: [docs/running.md](docs/running.md).
 
 ## Limitations
 

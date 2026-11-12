@@ -2,3 +2,4 @@ build/
 *.ncu-rep
 *.nsys-rep
 *.local.md
+__pycache__/
