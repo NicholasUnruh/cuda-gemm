@@ -8,7 +8,7 @@ Matrix multiply in CUDA, step by step from a naive kernel to tensor cores. Each 
 | 2 | [`coalesced`](docs/steps/2-coalesced.md) | Warps read B and write C contiguously | RTX 4060 | 864.3 | 12.4 |
 | 3 | [`smem`](docs/steps/3-smem.md) | Shared-memory tiles | RTX 4060 | 1,187 | 16.3 |
 | 4 | [`reg2d`](docs/steps/4-reg2d.md) | 2D register blocking per thread | RTX 4060 | 6,545 | 80.4 |
-| 5 | `vec` | 128-bit loads, transposed A tile | — | — | — |
+| 5 | [`vec`](docs/steps/5-vec.md) | 128-bit loads, transposed A tile | RTX 4060 | 7,053 | 88.1 |
 | 6 | `wmma` | Tensor cores (FP16 in, FP32 accumulate) | — | — | — |
 
 sm_89, CUDA 13.3, median of three runs ([raw](docs/results/rtx4060.csv)).

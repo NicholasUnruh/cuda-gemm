@@ -37,6 +37,7 @@ static const Kernel kKernels[] = {
     {"coalesced", gemm_coalesced},
     {"smem", gemm_smem},
     {"reg2d", gemm_reg2d},
+    {"vec", gemm_vec},
 };
 
 static const int kWarmup = 2;
