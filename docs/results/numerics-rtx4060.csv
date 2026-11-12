@@ -1,0 +1,41 @@
+# NVIDIA GeForce RTX 4060 (sm_89), driver 610.88, CUDA 13.3, WSL2; GPU idle; 2026-11-12 04:44 UTC
+# ./build/bench numerics. Error: median and p99 of |y - y64| / sum |a_i b_i| over the 2,000 dot products of
+# chip-lab tools/numerics/gemm_error.cpp (same generator and seeds). Cost: both 4096 x 4096 operands, 4096^3 GEMM.
+distribution,K,format,impl,median_err,p99_err
+gaussian,256,fp32,cuBLAS,1.40e-08,9.61e-08
+gaussian,256,bf16,cuBLAS,1.57e-04,6.09e-04
+gaussian,256,e4m3_tensor,fp8 (step 8),2.46e-03,9.23e-03
+gaussian,256,e4m3_tensor,cuBLASLt,2.45e-03,9.21e-03
+gaussian,4096,fp32,cuBLAS,1.39e-08,9.97e-08
+gaussian,4096,bf16,cuBLAS,3.62e-05,1.40e-04
+gaussian,4096,e4m3_tensor,fp8 (step 8),6.22e-04,2.32e-03
+gaussian,4096,e4m3_tensor,cuBLASLt,6.21e-04,2.32e-03
+laplace,256,fp32,cuBLAS,1.84e-08,1.18e-07
+laplace,256,bf16,cuBLAS,1.86e-04,7.57e-04
+laplace,256,e4m3_tensor,fp8 (step 8),3.09e-03,1.21e-02
+laplace,256,e4m3_tensor,cuBLASLt,3.08e-03,1.20e-02
+laplace,4096,fp32,cuBLAS,1.72e-08,1.19e-07
+laplace,4096,bf16,cuBLAS,4.68e-05,1.89e-04
+laplace,4096,e4m3_tensor,fp8 (step 8),8.19e-04,3.05e-03
+laplace,4096,e4m3_tensor,cuBLASLt,8.18e-04,3.05e-03
+outliers,256,fp32,cuBLAS,4.10e-08,3.75e-07
+outliers,256,bf16,cuBLAS,4.03e-04,2.66e-03
+outliers,256,e4m3_tensor,fp8 (step 8),6.76e-03,3.96e-02
+outliers,256,e4m3_tensor,cuBLASLt,6.75e-03,3.96e-02
+outliers,4096,fp32,cuBLAS,6.60e-08,4.87e-07
+outliers,4096,bf16,cuBLAS,1.85e-04,7.85e-04
+outliers,4096,e4m3_tensor,fp8 (step 8),2.97e-03,1.14e-02
+outliers,4096,e4m3_tensor,cuBLASLt,2.96e-03,1.14e-02
+rows,256,fp32,cuBLAS,1.38e-08,9.32e-08
+rows,256,bf16,cuBLAS,1.56e-04,6.07e-04
+rows,256,e4m3_tensor,fp8 (step 8),2.41e-03,9.97e-03
+rows,256,e4m3_tensor,cuBLASLt,2.40e-03,9.97e-03
+rows,4096,fp32,cuBLAS,1.40e-08,9.41e-08
+rows,4096,bf16,cuBLAS,3.91e-05,1.47e-04
+rows,4096,e4m3_tensor,fp8 (step 8),6.16e-04,2.44e-03
+rows,4096,e4m3_tensor,cuBLASLt,6.16e-04,2.44e-03
+format,impl,quantize_ms,gemm_ms,gemm_tflops,quantize_pct_of_gemm
+fp32,cuBLAS,0.0004,18.3060,7.51,0.0
+bf16,cuBLAS,0.8018,4.8735,28.20,16.5
+e4m3_tensor,fp8 (step 8),1.2482,2.4143,56.93,51.7
+e4m3_tensor,cuBLASLt,1.2235,2.1722,63.27,56.3

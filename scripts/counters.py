@@ -18,7 +18,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from plotstyle import THEMES
-from roofline import TENSOR, load
+from roofline import FP8, TENSOR, load
 
 REQ = "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum"
 SECT = "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum"
@@ -138,7 +138,7 @@ def main(src, dst, theme="light", json_out=None):
     for ax, (_, title, unit, _, value) in zip(axes.flat, PANELS):
         vals = [value(r) for r in rows]
         ax.set_facecolor(c["surface"])
-        colors = [c["tc"] if r[TENSOR] > 0 else c["fp32"] for r in rows]
+        colors = [c["tc"] if r[TENSOR] + r[FP8] > 0 else c["fp32"] for r in rows]
         ax.barh(range(len(rows)), vals, height=0.62, color=colors)
         top = max(vals) or 1
         ax.set_xlim(0, top * 1.45)
