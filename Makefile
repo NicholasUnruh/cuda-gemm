@@ -1,4 +1,4 @@
-.PHONY: check bench profile toolchain clean
+.PHONY: check bench profile probe crosscheck toolchain clean
 
 # Without a GPU: the micromamba CUDA env from `make toolchain` (compiles only).
 # On a GPU machine or Colab: CUDA_HOME=/usr/local/cuda, system g++.
@@ -11,16 +11,16 @@ ARCH ?= sm_75
 FLAGS := -O3 -std=c++17 -lineinfo $(if $(CCBIN),-ccbin $(CCBIN))
 SOURCES := $(wildcard src/*.cu)
 
-build/bench: $(SOURCES) src/gemm.cuh
+build/bench: $(SOURCES) $(wildcard src/*.cuh)
 	mkdir -p build
-	$(NVCC) $(FLAGS) -arch=$(ARCH) -o $@ $(SOURCES) -lcublas
+	$(NVCC) $(FLAGS) -arch=$(ARCH) -o $@ $(SOURCES) -lcublas -lcublasLt
 
 # Compiles every kernel for T4, A100 and L4. Needs no GPU. Run before every commit.
 check:
 	mkdir -p build
 	$(NVCC) $(FLAGS) -gencode arch=compute_75,code=sm_75 \
 		-gencode arch=compute_80,code=sm_80 -gencode arch=compute_89,code=sm_89 \
-		-o build/bench-check $(SOURCES) -lcublas
+		-o build/bench-check $(SOURCES) -lcublas -lcublasLt
 
 # Needs an NVIDIA GPU: make bench KERNEL=naive
 KERNEL ?= naive
@@ -32,7 +32,7 @@ bench: build/bench
 # base and times one launch, so its rates differ from `make bench`; peaks come
 # from the same run.
 NCU ?= $(CUDA_HOME)/bin/ncu
-KERNELS := naive coalesced smem reg2d vec wmma cpasync
+KERNELS := naive coalesced smem reg2d vec wmma cpasync fp8
 STALLS := long_scoreboard mio_throttle short_scoreboard barrier math_pipe_throttle lg_throttle not_selected
 comma := ,
 empty :=
@@ -41,6 +41,7 @@ METRIC_LIST := gpu__time_duration.sum dram__bytes_read.sum dram__bytes_write.sum
   dram__bytes.sum.peak_sustained dram__cycles_elapsed.avg.per_second sm__cycles_elapsed.avg.per_second \
   sm__sass_thread_inst_executed_op_ffma_pred_on.sum sm__sass_thread_inst_executed_op_ffma_pred_on.sum.peak_sustained \
   sm__ops_path_tensor_src_fp16_dst_fp32.sum sm__ops_path_tensor_src_fp16_dst_fp32.sum.peak_sustained \
+  sm__ops_path_tensor_src_fp8.sum sm__ops_path_tensor_src_fp8.sum.peak_sustained \
   l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum \
   l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum \
   l1tex__throughput.avg.pct_of_peak_sustained_active sm__warps_active.avg.pct_of_peak_sustained_active \
@@ -63,3 +64,17 @@ toolchain:
 
 clean:
 	rm -rf build
+
+# Needs a GPU with FP8 tensor cores: how one FP8 mma.sync adds (check/mma_probe.cu).
+probe:
+	mkdir -p build
+	$(NVCC) $(FLAGS) -arch=$(ARCH) -o build/mma_probe check/mma_probe.cu
+	./build/mma_probe
+
+# Needs a GPU and a checkout of openroad-chip-lab: GPU quantizers against the
+# chip-lab C++ reference, byte for byte (check/quant_crosscheck.cu).
+CHIPLAB ?= ../openroad-chip-lab
+crosscheck:
+	mkdir -p build
+	$(NVCC) $(FLAGS) -arch=$(ARCH) -I$(CHIPLAB) -o build/quant_crosscheck check/quant_crosscheck.cu src/quant.cu
+	./build/quant_crosscheck

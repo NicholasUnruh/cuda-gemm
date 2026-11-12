@@ -1,0 +1,21 @@
+# NVIDIA GeForce RTX 4060 (sm_89), driver 610.88, CUDA 13.3, WSL2; GPU idle; 2026-11-12 04:25 UTC
+# fp8 kernel with the FP32 promotion moved (sed variants of src/fp8.cu): none = every MMA accumulates in the
+# tensor-core accumulator; 64 = a fresh accumulator per 64-deep K tile, added into FP32 (committed);
+# 32 = added into FP32 after every MMA. Sizes 256, 1024, then 4096 three times.
+# exact_err: max |C - exact| / max |exact| over 4096 sampled entries, exact = FP64 dot product of the same E4M3 codes.
+promotion,n,gflops,cublaslt_gflops,pct_cublaslt,exact_err,cublaslt_exact_err
+none,256,3996.1,1883.2,212.2,3.70e-04,2.74e-04
+none,1024,41363.9,48884.7,84.6,9.36e-04,2.34e-04
+none,4096,53130.3,59557.0,89.2,2.42e-03,9.60e-05
+none,4096,53943.9,60581.2,89.0,2.39e-03,1.42e-04
+none,4096,53939.5,60584.0,89.0,2.67e-03,1.26e-04
+64,256,3855.1,3042.0,126.7,1.16e-04,2.74e-04
+64,1024,41527.8,28571.6,145.3,9.28e-05,2.34e-04
+64,4096,55715.1,60586.7,92.0,6.10e-05,9.60e-05
+64,4096,54825.3,59535.9,92.1,8.58e-05,1.42e-04
+64,4096,57775.3,62744.9,92.1,9.44e-05,1.26e-04
+32,256,448.3,393.3,114.0,5.44e-05,2.74e-04
+32,1024,36663.5,27962.0,131.1,5.41e-05,2.34e-04
+32,4096,46632.5,62756.7,74.3,3.84e-05,9.60e-05
+32,4096,47613.3,64151.5,74.2,5.60e-05,1.42e-04
+32,4096,47603.4,64139.2,74.2,5.26e-05,1.26e-04

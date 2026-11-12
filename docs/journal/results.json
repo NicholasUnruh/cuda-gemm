@@ -1,0 +1,6 @@
+[
+  {"format": "BF16", "metric": "gemm_tflops", "value": 28.20, "unit": "TFLOP/s (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "BF16", "metric": "quantize_ms", "value": 0.8018, "unit": "ms, both 4096x4096 operands (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "BF16", "metric": "gemm_err_median", "value": 3.62e-5, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"},
+  {"format": "BF16", "metric": "gemm_err_p99", "value": 1.40e-4, "unit": "|y-y64|/sum|ab|, Gaussian, K=4096 (RTX 4060)", "source": "docs/results/numerics-rtx4060.csv"}
+]
