@@ -101,6 +101,9 @@ int main(int argc, char **argv) {
     CUDA_CHECK(cudaMalloc(&B, bytes));
     CUDA_CHECK(cudaMalloc(&C, bytes));
     CUDA_CHECK(cudaMalloc(&Ref, bytes));
+    // beta is 0, but the kernels still read C: start from zeros, not garbage.
+    CUDA_CHECK(cudaMemset(C, 0, bytes));
+    CUDA_CHECK(cudaMemset(Ref, 0, bytes));
     CUDA_CHECK(cudaMemcpy(A, hA.data(), bytes, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(B, hB.data(), bytes, cudaMemcpyHostToDevice));
 
