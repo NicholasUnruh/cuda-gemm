@@ -21,17 +21,23 @@ from plotstyle import THEMES
 
 FP32 = "sm__sass_thread_inst_executed_op_ffma_pred_on.sum"
 TENSOR = "sm__ops_path_tensor_src_fp16_dst_fp32.sum"
+FP8 = "sm__ops_path_tensor_src_fp8.sum"  # profiles before step 8 lack it: 0
 
 
 def load(path):
-    """Kernel rows of the ncu raw CSV pages, numbers parsed."""
+    """Kernel rows of the ncu raw CSV pages, numbers parsed. Each page has its
+    own header, since the metric list grew over the steps."""
     with open(path) as f:
         lines = [l for l in f if l.startswith('"')]  # drop bench's own stdout
-    rows = []
-    for r in csv.DictReader(lines):
-        if r["ID"] in ("ID", ""):  # repeated header or units row
+    rows, header = [], None
+    for values in csv.reader(lines):
+        if values[0] == "ID":
+            header = values
             continue
-        rec = {"name": r["Kernel Name"].split("_kernel")[0]}
+        r = dict(zip(header, values))
+        if r["ID"] == "":  # units row
+            continue
+        rec = {"name": r["Kernel Name"].split("_kernel")[0], FP8: 0.0}
         for k, v in r.items():
             try:
                 rec[k] = float(v.replace(",", ""))
@@ -56,15 +62,17 @@ def main(src, dst, gpu, theme="light"):
     sm_hz = r0["sm__cycles_elapsed.avg.per_second"]
     peak_fp32 = 2 * r0[FP32 + ".peak_sustained"] * sm_hz
     peak_tensor = r0[TENSOR + ".peak_sustained"] * sm_hz
+    peak_fp8 = max(r.get(FP8 + ".peak_sustained", 0) for r in rows) * sm_hz
     peak_bw = (
         r0["dram__bytes.sum.peak_sustained"] * r0["dram__cycles_elapsed.avg.per_second"]
     )
     print(
         f"peak_fp32_gflops,{peak_fp32 / 1e9:.0f}\npeak_tensor_gflops,{peak_tensor / 1e9:.0f}"
+        f"\npeak_fp8_gflops,{peak_fp8 / 1e9:.0f}"
         f"\npeak_dram_gbs,{peak_bw / 1e9:.0f}\nkernel,flop_per_byte,gflops"
     )
     for r in rows:
-        r["flops"] = 2 * r[FP32] + r[TENSOR]
+        r["flops"] = 2 * r[FP32] + r[TENSOR] + r[FP8]
         r["bytes"] = r["dram__bytes_read.sum"] + r["dram__bytes_write.sum"]
         r["ai"] = r["flops"] / r["bytes"]
         r["perf"] = r["flops"] / (r["gpu__time_duration.sum"] * 1e-9)
@@ -79,14 +87,18 @@ def main(src, dst, gpu, theme="light"):
     lo = min(r["ai"] for r in rows) / 2
     hi = max(r["ai"] for r in rows) * 4
     ax.set_xlim(lo / 1.1, hi * 1.1)
-    ax.set_ylim(min(r["perf"] for r in rows) / 1e9 / 2, peak_tensor / 1e9 * 2)
+    top = max(peak_tensor, peak_fp8)
+    ax.set_ylim(min(r["perf"] for r in rows) / 1e9 / 2, top / 1e9 * 2)
     xs = [lo * (hi / lo) ** (i / 200) for i in range(201)]
     # Tensor ceiling label above its line, FP32 label below its own, both at
     # the right edge where no kernel sits.
     for peak, label, va, nudge in [
         (peak_fp32, "FP32 FMA peak", "top", 1 / 1.12),
         (peak_tensor, "FP16 tensor peak", "bottom", 1.12),
+        (peak_fp8, "FP8 tensor peak", "bottom", 1.12),
     ]:
+        if peak == 0:
+            continue
         ax.plot(
             xs, [min(peak, peak_bw * x) / 1e9 for x in xs], color=c["muted"], lw=1.5
         )
@@ -104,7 +116,7 @@ def main(src, dst, gpu, theme="light"):
             r["ai"],
             r["perf"] / 1e9,
             s=48,
-            color=c["tc"] if r[TENSOR] > 0 else c["fp32"],
+            color=c["tc"] if r[TENSOR] + r[FP8] > 0 else c["fp32"],
             edgecolor=c["surface"],
             linewidth=2,
             zorder=3,
@@ -121,7 +133,7 @@ def main(src, dst, gpu, theme="light"):
             color=c["ink"],
         )
     ax.scatter([], [], s=48, color=c["fp32"], label="FP32 kernels")
-    ax.scatter([], [], s=48, color=c["tc"], label="FP16 tensor-core kernel")
+    ax.scatter([], [], s=48, color=c["tc"], label="Tensor-core kernels (FP16, FP8)")
     leg = ax.legend(frameon=False, fontsize=8, loc="lower right")
     for t in leg.get_texts():
         t.set_color(c["ink"])
