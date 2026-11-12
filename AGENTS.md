@@ -1,6 +1,6 @@
 # CUDA GEMM
 
-- Goal: a portfolio project for GPU architecture internships. The owner writes each kernel; agents review, explain, profile and fix the harness. Ask before writing a kernel step.
+- Goal: a portfolio project for GPU architecture internships. Agents write the kernels (owner decision, 2026-11-11), and each step's explanation must be correct enough for the owner to defend in an interview.
 - Layout: `src/gemm.cuh` holds the launcher signature, one `src/<step>.cu` per kernel, and each kernel is registered in `kKernels` in `src/bench.cu`.
 - Run `make check` before committing: it compiles for sm_75, sm_80 and sm_89. No GPU here; local nvcc comes from `make toolchain` (`~/.local/opt/cuda-12.9`).
 - A step counts only with a measured row from `make bench` on a real GPU: GFLOPS, % cuBLAS and `max_rel_err` within tolerance. Say which GPU. Never estimate a number.
