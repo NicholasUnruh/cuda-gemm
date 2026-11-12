@@ -23,3 +23,5 @@ Global memory is still accessed 4 bytes per instruction: 8 `LDG.E` per K step, a
 ## Profile
 
 Nsight Compute, one profiled launch at 4096³: 57.08 FLOP per DRAM byte and 7044.4 GFLOP/s ([roofline](../roofline.png), [raw counters](../results/ncu-rtx4060.csv)). Instruction counts above are from `cuobjdump -sass` and `ptxas -v` (CUDA 13.3, sm_89).
+
+Counters against `smem` ([chart](../img/counters.png)): MIO throttle falls from 23.6 to 0.82, the FMA pipe goes from 7.8% to 48.8% busy and DRAM reads from 8.92 to 2.34 GB, while achieved occupancy halves (66.7% to 33.0%) as predicted above.

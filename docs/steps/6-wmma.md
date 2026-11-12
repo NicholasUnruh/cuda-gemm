@@ -23,3 +23,5 @@ No pipelining: each K step loads, syncs, computes and syncs, so tensor cores idl
 ## Profile
 
 Nsight Compute, one profiled launch at 4096³: 152.18 FLOP per DRAM byte and 20238.8 GFLOP/s ([roofline](../roofline.png), [raw counters](../results/ncu-rtx4060.csv)). Instruction counts above are from `cuobjdump -sass` and `ptxas -v` (CUDA 13.3, sm_89).
+
+Counters ([chart](../img/counters.png)): the tensor pipe is 33.5% busy and the FMA pipe 1.0%. The top stall is long scoreboard (waiting on global loads) at 15.2 warps per issue cycle, up from 1.28 in `vec`, consistent with the missing pipelining above.
