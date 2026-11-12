@@ -57,10 +57,10 @@ __device__ __forceinline__ float e8m0(unsigned e) {
 // block of each operand, so its partial sum is multiplied by 2^(sa + sb) in
 // FP32. Ada has no block-scaled MMA, so this costs FP32 work after every MMA.
 template <bool kMx>
-__global__ void __launch_bounds__(kThreads)
-    fp8_kernel(int M, int N, int K, float alpha, const uint8_t *A,
-               const uint8_t *sa, const uint8_t *Bt, const uint8_t *sb,
-               float beta, float *C) {
+__device__ __forceinline__ void fp8_gemm(int M, int N, int K, float alpha,
+                                         const uint8_t *A, const uint8_t *sa,
+                                         const uint8_t *Bt, const uint8_t *sb,
+                                         float beta, float *C) {
   static_assert(kSteps == 2, "a row's scales for one K tile are one uint16");
   __shared__ __align__(128) uint8_t As[kStages][BM * LDS];
   __shared__ __align__(128) uint8_t Bs[kStages][BN * LDS];
@@ -178,16 +178,31 @@ __global__ void __launch_bounds__(kThreads)
       }
 }
 
+// Two entry points, so the profiler reports the formats under their own names.
+__global__ void __launch_bounds__(kThreads)
+    fp8_kernel(int M, int N, int K, float alpha, const uint8_t *A,
+               const uint8_t *sa, const uint8_t *Bt, const uint8_t *sb,
+               float beta, float *C) {
+  fp8_gemm<false>(M, N, K, alpha, A, sa, Bt, sb, beta, C);
+}
+
+__global__ void __launch_bounds__(kThreads)
+    mxfp8_kernel(int M, int N, int K, float alpha, const uint8_t *A,
+                 const uint8_t *sa, const uint8_t *Bt, const uint8_t *sb,
+                 float beta, float *C) {
+  fp8_gemm<true>(M, N, K, alpha, A, sa, Bt, sb, beta, C);
+}
+
 void gemm_fp8(int M, int N, int K, float alpha, const uint8_t *A,
               const uint8_t *sa, const uint8_t *Bt, const uint8_t *sb,
               float beta, float *C) {
-  fp8_kernel<false><<<(M / BM) * (N / BN), kThreads>>>(M, N, K, alpha, A, sa,
-                                                       Bt, sb, beta, C);
+  fp8_kernel<<<(M / BM) * (N / BN), kThreads>>>(M, N, K, alpha, A, sa, Bt, sb,
+                                                beta, C);
 }
 
 void gemm_mxfp8(int M, int N, int K, float alpha, const uint8_t *A,
                 const uint8_t *sa, const uint8_t *Bt, const uint8_t *sb,
                 float beta, float *C) {
-  fp8_kernel<true><<<(M / BM) * (N / BN), kThreads>>>(M, N, K, alpha, A, sa,
-                                                      Bt, sb, beta, C);
+  mxfp8_kernel<<<(M / BM) * (N / BN), kThreads>>>(M, N, K, alpha, A, sa, Bt,
+                                                  sb, beta, C);
 }

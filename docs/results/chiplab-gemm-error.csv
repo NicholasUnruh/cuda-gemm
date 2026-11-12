@@ -1,0 +1,19 @@
+# Copied from openroad-chip-lab docs/numerics-results.md ("GEMM error", verified 2026-11-11): bit-exact C++ models of
+# its datapaths (tools/numerics/datapaths.h), K = 4096. Median and p99 of |y - y64| / sum |a_i b_i| over 2,000 dot products.
+format,distribution,median_err,p99_err
+bf16,gaussian,3.6e-5,1.4e-4
+bf16,laplace,4.7e-5,1.9e-4
+bf16,outliers,1.9e-4,7.8e-4
+bf16,rows,3.9e-5,1.5e-4
+e4m3_tensor,gaussian,6.2e-4,2.3e-3
+e4m3_tensor,laplace,8.2e-4,3.1e-3
+e4m3_tensor,outliers,3.0e-3,1.1e-2
+e4m3_tensor,rows,6.2e-4,2.4e-3
+mxfp8,gaussian,7.0e-4,2.6e-3
+mxfp8,laplace,9.8e-4,3.7e-3
+mxfp8,outliers,3.8e-3,1.6e-2
+mxfp8,rows,7.1e-4,2.8e-3
+mxfp4,gaussian,2.6e-3,1.1e-2
+mxfp4,laplace,3.8e-3,1.5e-2
+mxfp4,outliers,1.4e-2,5.7e-2
+mxfp4,rows,2.6e-3,9.7e-3

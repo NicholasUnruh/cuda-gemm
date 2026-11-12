@@ -133,7 +133,7 @@ std::vector<Path> paths() {
          lt->run(alpha, u8(b.qa), u8(b.qb), 0.f, b.C);
        }},
       {"mxfp8", "mxfp8 (step 9)", true, 0, mxfp8, mine(gemm_mxfp8, true)},
-      {"mxfp4", "mxfp8 kernel, E2M1 values", true, 0, mxfp4,
+      {"mxfp4", "mxfp8 kernel on E2M1 values", true, 0, mxfp4,
        mine(gemm_mxfp8, true)},
       {"nvfp4", "FP16 cuBLAS on decoded values", false, 6.0 * 448.0, nvfp4,
        [](Buffers &b, float alpha) { gemm16_tn(b, alpha, CUDA_R_16F); }},
