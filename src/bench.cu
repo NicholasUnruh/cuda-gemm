@@ -1,6 +1,7 @@
 // Times one kernel against cuBLAS on square sizes and checks its result.
 // Usage: bench <kernel> [size ...]   Prints CSV; exits 1 on a wrong result.
 #include <cublas_v2.h>
+
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -10,20 +11,21 @@
 
 #include "gemm.cuh"
 
-#define CUDA_CHECK(x)                                                         \
-  do {                                                                        \
-    cudaError_t e = (x);                                                      \
-    if (e != cudaSuccess) {                                                   \
-      fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, cudaGetErrorString(e)); \
-      exit(2);                                                                \
-    }                                                                         \
+#define CUDA_CHECK(x)                                   \
+  do {                                                  \
+    cudaError_t e = (x);                                \
+    if (e != cudaSuccess) {                             \
+      fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, \
+              cudaGetErrorString(e));                   \
+      exit(2);                                          \
+    }                                                   \
   } while (0)
-#define CUBLAS_CHECK(x)                                                       \
-  do {                                                                        \
-    if ((x) != CUBLAS_STATUS_SUCCESS) {                                       \
-      fprintf(stderr, "%s:%d cuBLAS error\n", __FILE__, __LINE__);            \
-      exit(2);                                                                \
-    }                                                                         \
+#define CUBLAS_CHECK(x)                                            \
+  do {                                                             \
+    if ((x) != CUBLAS_STATUS_SUCCESS) {                            \
+      fprintf(stderr, "%s:%d cuBLAS error\n", __FILE__, __LINE__); \
+      exit(2);                                                     \
+    }                                                              \
   } while (0)
 
 // Exactly one of fn (FP32 inputs) and half_fn (FP16 inputs) is set.
@@ -34,6 +36,7 @@ struct Kernel {
 };
 
 // Add each new kernel here.
+// clang-format off
 static const Kernel kKernels[] = {
     {"naive", gemm_naive, nullptr},
     {"coalesced", gemm_coalesced, nullptr},
@@ -42,6 +45,7 @@ static const Kernel kKernels[] = {
     {"vec", gemm_vec, nullptr},
     {"wmma", nullptr, gemm_wmma},
 };
+// clang-format on
 
 static const int kWarmup = 2;
 static const int kReps = 10;
@@ -115,7 +119,8 @@ int main(int argc, char **argv) {
   CUBLAS_CHECK(cublasCreate(&g_handle));
   cudaDeviceProp prop;
   CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
-  printf("# %s\nkernel,n,ms,gflops,cublas_gflops,pct_cublas,max_rel_err\n", prop.name);
+  printf("# %s\nkernel,n,ms,gflops,cublas_gflops,pct_cublas,max_rel_err\n",
+         prop.name);
 
   bool ok = true;
   std::mt19937 rng(42);
@@ -153,7 +158,8 @@ int main(int argc, char **argv) {
       CUDA_CHECK(cudaMemcpy(Bh, hBh.data(), count * sizeof(__half),
                             cudaMemcpyHostToDevice));
       ms = time_ms([&] { kernel->half_fn(n, n, n, 1.f, Ah, Bh, 0.f, C); });
-      ref_ms = time_ms([&] { gemm_cublas_half(n, n, n, 1.f, Ah, Bh, 0.f, Ref); });
+      ref_ms =
+          time_ms([&] { gemm_cublas_half(n, n, n, 1.f, Ah, Bh, 0.f, Ref); });
       CUDA_CHECK(cudaFree(Ah));
       CUDA_CHECK(cudaFree(Bh));
     }

@@ -27,8 +27,8 @@ __global__ void smem_kernel(int M, int N, int K, float alpha, const float *A,
   C[row * N + col] = alpha * acc + beta * C[row * N + col];
 }
 
-void gemm_smem(int M, int N, int K, float alpha, const float *A,
-               const float *B, float beta, float *C) {
+void gemm_smem(int M, int N, int K, float alpha, const float *A, const float *B,
+               float beta, float *C) {
   dim3 block(kTile, kTile);
   dim3 grid(N / kTile, M / kTile);
   smem_kernel<<<grid, block>>>(M, N, K, alpha, A, B, beta, C);

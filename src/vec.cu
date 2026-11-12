@@ -10,9 +10,9 @@ constexpr int kThreads = (BM / TM) * (BN / TN);  // 256
 // contiguous and come back in two 128-bit shared loads, like its 8 values of
 // B. C is written with float4 stores. Fewer, wider instructions for the same
 // bytes free issue slots for FMAs.
-__global__ __launch_bounds__(kThreads) void vec_kernel(
-    int M, int N, int K, float alpha, const float *A, const float *B,
-    float beta, float *C) {
+__global__ void __launch_bounds__(kThreads)
+    vec_kernel(int M, int N, int K, float alpha, const float *A, const float *B,
+               float beta, float *C) {
   __shared__ float4 As4[BK * BM / 4];  // As[k][m], transposed, BK x BM
   __shared__ float4 Bs4[BK * BN / 4];  // Bs[k][n], BK x BN
   float *As = reinterpret_cast<float *>(As4);

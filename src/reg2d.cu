@@ -1,16 +1,16 @@
 #include "gemm.cuh"
 
-constexpr int BM = 128, BN = 128, BK = 8;  // block tile of C, K step
-constexpr int TM = 8, TN = 8;              // per-thread tile of C
+constexpr int BM = 128, BN = 128, BK = 8;        // block tile of C, K step
+constexpr int TM = 8, TN = 8;                    // per-thread tile of C
 constexpr int kThreads = (BM / TM) * (BN / TN);  // 256
 
 // Each thread computes an 8x8 block of C held in 64 registers. Per k it loads
 // 8 floats of A and 8 of B from shared memory into registers and does 64 FMAs:
 // 16 shared loads per 64 FMAs, against 2 per 1 in the smem step. Shared-memory
 // bandwidth stops being the limit and the FMA pipe does more of the work.
-__global__ __launch_bounds__(kThreads) void reg2d_kernel(
-    int M, int N, int K, float alpha, const float *A, const float *B,
-    float beta, float *C) {
+__global__ void __launch_bounds__(kThreads)
+    reg2d_kernel(int M, int N, int K, float alpha, const float *A,
+                 const float *B, float beta, float *C) {
   __shared__ float As[BM * BK];  // row-major BM x BK
   __shared__ float Bs[BK * BN];  // row-major BK x BN
   const int tid = threadIdx.x;
